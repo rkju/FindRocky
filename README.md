@@ -49,3 +49,8 @@ Set your name and choose a team color in your profile. Tap **Walked**, drag a
 line over the route, choose the date searched, and save it. Tap a saved line to
 change its date or delete it. Routes are stored separately from existing pins.
 Nelly's imported route is an approximate trace; its date is not recorded.
+
+Tap **Walk** to record your route with GPS, then **Stop** to save it. Keep the
+page open with the screen on; phones pause GPS when the browser is in the
+background. An unsaved walk resumes if the page reloads. The crosshair button
+centers the map on you.

@@ -237,12 +237,25 @@
     <button id="cancelRouteDrawingBtn" type="button" class="min-h-[44px] px-3 rounded-xl bg-slate-100 text-slate-900 text-sm font-bold">Cancel</button>
   </div>
 
+  <div id="walkStatus" hidden class="fixed bottom-[82px] left-3 sm:left-auto sm:right-4 z-20 bg-white border-2 border-slate-900 rounded-full shadow-xl pl-3 pr-1 py-1 flex items-center gap-2.5">
+    <span id="walkSignalDot" class="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
+    <span id="walkStats" class="text-sm font-extrabold tabular-nums text-slate-900">0:00 · 0.00 mi</span>
+    <button id="discardWalkBtn" type="button" aria-label="Discard walk" title="Discard walk" class="w-9 h-9 rounded-full bg-slate-100 text-slate-700 flex items-center justify-center">
+      <i class="ph-bold ph-x"></i>
+    </button>
+  </div>
+
   <!-- Bottom Floating Action Bar (Thumb Zone) -->
   <div id="mapActionBar" class="fixed bottom-4 left-3 right-3 sm:left-auto sm:right-4 sm:w-96 z-20 flex items-center gap-2.5 pointer-events-none">
     <!-- Center on My GPS -->
-    <button id="gpsLocateBtn" type="button" class="pointer-events-auto min-h-[54px] px-4 rounded-2xl bg-white border-2 border-slate-900 text-slate-900 font-extrabold text-sm shadow-xl flex items-center justify-center gap-2 active:scale-95 transition shrink-0">
-      <i id="gpsIcon" class="ph-bold ph-crosshair text-xl text-blue-600"></i>
-      <span>My GPS</span>
+    <button id="gpsLocateBtn" type="button" title="Center on me" aria-label="Center on me" class="pointer-events-auto w-[54px] h-[54px] rounded-2xl bg-white border-2 border-slate-900 text-slate-900 shadow-xl flex items-center justify-center active:scale-95 transition shrink-0">
+      <i id="gpsIcon" class="ph-bold ph-crosshair text-2xl text-blue-600"></i>
+    </button>
+
+    <!-- GPS walk logging -->
+    <button id="walkBtn" type="button" class="pointer-events-auto min-h-[54px] px-3.5 rounded-2xl bg-white border-2 border-slate-900 text-slate-900 font-extrabold text-sm shadow-xl flex items-center justify-center gap-1.5 active:scale-95 transition shrink-0">
+      <i id="walkIcon" class="ph-fill ph-person-simple-walk text-xl text-emerald-600"></i>
+      <span id="walkLabel">Walk</span>
     </button>
 
     <!-- Primary CTA: Drop Pin at My GPS Location -->
@@ -510,6 +523,18 @@
     let userAccuracyCircle = null;
     let latestUserLatLng = null;
     let gpsWatchId = null;
+    let latestFixAt = 0;
+    let gpsLocateTimer = null;
+    let gpsLocatePending = false;
+    const WALK_STORAGE_KEY = "spruce_active_walk";
+    const WALK_MAX_ACCURACY_M = 35;
+    const WALK_MIN_STEP_M = 6;
+    let walk = null;
+    let walkLine = null;
+    let walkWatchId = null;
+    let walkTimer = null;
+    let walkWakeLock = null;
+    let draftFromWalk = false;
 
     let ringLayers = {
       r05: null,
@@ -720,6 +745,7 @@
           bindEvents();
           initFirebaseSync();
           startContinuousGps(false);
+          resumeStoredWalk();
         } catch (error) {
           console.error("Map setup error:", error);
           document.getElementById("appView").hidden = true;
@@ -1220,6 +1246,7 @@
       if (draftRouteLine) map.removeLayer(draftRouteLine);
       draftRouteLine = null;
       draftRoute = null;
+      draftFromWalk = false;
       routeLastPoint = null;
     }
 
@@ -1254,6 +1281,10 @@
       }
       if (typeof map.getContainer().setPointerCapture !== "function") {
         showToast("Drawing is not supported in this browser");
+        return;
+      }
+      if (walk) {
+        showToast("Stop your walk first");
         return;
       }
       if (pinOperationPending || routeDrawerBlocked()) return;
@@ -1451,6 +1482,7 @@
           }
           showToast("Route shared with team");
         }
+        if (!targetId && draftFromWalk && draftRoute === targetDraft) clearStoredWalk();
         if (editingRouteId === targetId && draftRoute === targetDraft) closeRouteDrawer();
       } catch (error) {
         console.error("Route save error:", error);
@@ -1520,42 +1552,281 @@
       }
     }
 
+    function gpsErrorMessage(err) {
+      if (!window.isSecureContext) return "GPS needs the https:// site";
+      if (err && err.code === 1) return "Location blocked — allow it in browser settings";
+      if (err && err.code === 3) return "No GPS fix yet — try again outside";
+      return "GPS unavailable";
+    }
+
+    function setGpsIconState(state) {
+      const gpsIcon = document.getElementById("gpsIcon");
+      gpsIcon.classList.toggle("animate-spin", state === "locating");
+      gpsIcon.classList.toggle("text-blue-600", state !== "error");
+      gpsIcon.classList.toggle("text-red-600", state === "error");
+    }
+
+    function finishGpsLocate(pos, err) {
+      if (!gpsLocatePending) return;
+      gpsLocatePending = false;
+      clearTimeout(gpsLocateTimer);
+      gpsLocateTimer = null;
+      if (pos) {
+        setGpsIconState("ok");
+        map.flyTo([pos.lat, pos.lng], 17, { duration: 0.7 });
+      } else {
+        setGpsIconState("error");
+        showToast(gpsErrorMessage(err));
+      }
+    }
+
+    function handleGpsFix(pos) {
+      const { latitude, longitude, accuracy } = pos.coords;
+      updateGpsMarker(latitude, longitude, accuracy);
+      latestFixAt = Date.now();
+      if (!gpsLocatePending) setGpsIconState("ok");
+      finishGpsLocate({ lat: latitude, lng: longitude });
+    }
+
+    function ensureGpsWatch() {
+      if (gpsWatchId !== null) return;
+      gpsWatchId = navigator.geolocation.watchPosition(
+        handleGpsFix,
+        (err) => {
+          if (err.code === 1) {
+            navigator.geolocation.clearWatch(gpsWatchId);
+            gpsWatchId = null;
+            setGpsIconState("error");
+          }
+          finishGpsLocate(null, err);
+        },
+        { enableHighAccuracy: true, maximumAge: 4000 }
+      );
+    }
+
     function startContinuousGps(centerOnFix = false) {
       if (!("geolocation" in navigator)) {
-        showToast("GPS not supported on this browser");
+        if (centerOnFix) showToast("GPS not supported on this browser");
         return;
       }
 
-      const gpsIcon = document.getElementById("gpsIcon");
-      gpsIcon.classList.add("animate-spin");
+      ensureGpsWatch();
+      if (!centerOnFix) return;
 
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          gpsIcon.classList.remove("animate-spin");
-          const { latitude, longitude, accuracy } = pos.coords;
-          updateGpsMarker(latitude, longitude, accuracy);
-          if (centerOnFix) {
-            map.flyTo([latitude, longitude], 17, { duration: 0.7 });
-          }
-        },
-        (err) => {
-          gpsIcon.classList.remove("animate-spin");
-          if (centerOnFix) {
-            showToast("Enable Location Services to use GPS");
-          }
-        },
-        { enableHighAccuracy: true, timeout: 10000, maximumAge: 5000 }
-      );
-
-      if (gpsWatchId === null) {
-        gpsWatchId = navigator.geolocation.watchPosition(
-          (pos) => {
-            updateGpsMarker(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy);
-          },
-          () => {},
-          { enableHighAccuracy: true, maximumAge: 4000 }
-        );
+      if (latestUserLatLng && Date.now() - latestFixAt < 30000) {
+        setGpsIconState("ok");
+        map.flyTo([latestUserLatLng.lat, latestUserLatLng.lng], 17, { duration: 0.7 });
+        return;
       }
+      if (gpsLocatePending) return;
+
+      gpsLocatePending = true;
+      setGpsIconState("locating");
+      // A pending permission prompt pauses the browser's own timeout, so cap the spinner here too.
+      gpsLocateTimer = setTimeout(() => finishGpsLocate(null, { code: 3 }), 15000);
+      navigator.geolocation.getCurrentPosition(
+        handleGpsFix,
+        (err) => finishGpsLocate(null, err),
+        { enableHighAccuracy: true, timeout: 12000, maximumAge: 10000 }
+      );
+    }
+
+    // =========================================================================
+    // GPS WALK LOGGING
+    // =========================================================================
+    function walkColor() {
+      return typeof currentMember.color === "string" && /^#[0-9a-f]{6}$/i.test(currentMember.color)
+        ? currentMember.color
+        : DEFAULT_MEMBER_COLOR;
+    }
+
+    function storeWalk() {
+      try {
+        localStorage.setItem(WALK_STORAGE_KEY, JSON.stringify(walk));
+      } catch (e) {
+        console.error("Could not store walk:", e);
+      }
+    }
+
+    function clearStoredWalk() {
+      try {
+        localStorage.removeItem(WALK_STORAGE_KEY);
+      } catch (e) {}
+    }
+
+    function walkDistanceMeters() {
+      let total = 0;
+      for (let i = 1; i < walk.points.length; i++) {
+        total += L.latLng(walk.points[i - 1]).distanceTo(walk.points[i]);
+      }
+      return total;
+    }
+
+    function renderWalkStats() {
+      if (!walk) return;
+      const secs = Math.max(0, Math.floor((Date.now() - walk.startedAt) / 1000));
+      const h = Math.floor(secs / 3600);
+      const m = Math.floor((secs % 3600) / 60);
+      const s = String(secs % 60).padStart(2, "0");
+      const time = h ? `${h}:${String(m).padStart(2, "0")}:${s}` : `${m}:${s}`;
+      const miles = (walk.distanceM / 1609.344).toFixed(2);
+      document.getElementById("walkStats").textContent = `${time} · ${miles} mi`;
+      const fresh = Date.now() - walk.lastGoodFixAt < 20000;
+      const dot = document.getElementById("walkSignalDot");
+      dot.classList.toggle("bg-emerald-500", fresh);
+      dot.classList.toggle("bg-amber-500", !fresh);
+    }
+
+    function setWalkUi(active) {
+      document.getElementById("walkStatus").hidden = !active;
+      document.getElementById("walkLabel").textContent = active ? "Stop" : "Walk";
+      const btn = document.getElementById("walkBtn");
+      btn.classList.toggle("bg-red-600", active);
+      btn.classList.toggle("text-white", active);
+      btn.classList.toggle("bg-white", !active);
+      btn.classList.toggle("text-slate-900", !active);
+      const icon = document.getElementById("walkIcon");
+      icon.classList.toggle("ph-person-simple-walk", !active);
+      icon.classList.toggle("text-emerald-600", !active);
+      icon.classList.toggle("ph-stop", active);
+      icon.classList.toggle("text-white", active);
+      document.getElementById("drawRouteBtn").disabled = active;
+    }
+
+    async function requestWalkWakeLock() {
+      if (!walk || !("wakeLock" in navigator) || document.visibilityState !== "visible") return;
+      try {
+        walkWakeLock = await navigator.wakeLock.request("screen");
+        walkWakeLock.addEventListener("release", () => { walkWakeLock = null; });
+      } catch (e) {
+        console.warn("Wake lock unavailable:", e);
+      }
+    }
+
+    function handleWalkFix(pos) {
+      if (!walk) return;
+      handleGpsFix(pos);
+      const { latitude, longitude, accuracy } = pos.coords;
+      if (!(accuracy <= WALK_MAX_ACCURACY_M)) {
+        renderWalkStats();
+        return;
+      }
+      walk.lastGoodFixAt = Date.now();
+      const point = { lat: Number(latitude.toFixed(6)), lng: Number(longitude.toFixed(6)) };
+      const last = walk.points[walk.points.length - 1];
+      if (last) {
+        const step = L.latLng(last).distanceTo(point);
+        if (step < WALK_MIN_STEP_M) {
+          renderWalkStats();
+          return;
+        }
+        walk.distanceM += step;
+      }
+      walk.points.push(point);
+      walkLine.addLatLng(point);
+      storeWalk();
+      renderWalkStats();
+      if (walk.points.length >= MAX_ROUTE_POINTS) {
+        showToast("Route limit reached");
+        stopWalk();
+      }
+    }
+
+    function beginWalkTracking() {
+      walkLine = L.polyline(walk.points, { color: walk.memberColor, weight: 6, opacity: 0.9, interactive: false }).addTo(map);
+      walk.distanceM = walkDistanceMeters();
+      walk.lastGoodFixAt = 0;
+      setWalkUi(true);
+      renderWalkStats();
+      walkTimer = setInterval(renderWalkStats, 1000);
+      walkWatchId = navigator.geolocation.watchPosition(
+        handleWalkFix,
+        (err) => {
+          if (err.code === 1) {
+            showToast(gpsErrorMessage(err));
+            setGpsIconState("error");
+          }
+        },
+        { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 }
+      );
+      requestWalkWakeLock();
+    }
+
+    function startWalk() {
+      if (!("geolocation" in navigator) || !window.isSecureContext) {
+        showToast(gpsErrorMessage(null));
+        return;
+      }
+      if (routeDrawing || routeOperationPending) return;
+      walk = {
+        memberName: typeof currentMember.name === "string" && currentMember.name.trim() ? currentMember.name.trim() : "Member 1",
+        memberColor: walkColor(),
+        startedAt: Date.now(),
+        points: []
+      };
+      storeWalk();
+      beginWalkTracking();
+      startContinuousGps(true);
+    }
+
+    function endWalkTracking() {
+      if (walkWatchId !== null) navigator.geolocation.clearWatch(walkWatchId);
+      walkWatchId = null;
+      clearInterval(walkTimer);
+      walkTimer = null;
+      if (walkWakeLock) walkWakeLock.release().catch(() => {});
+      walkWakeLock = null;
+      setWalkUi(false);
+    }
+
+    function stopWalk() {
+      if (!walk) return;
+      if (pinDrawer.classList.contains("open")) {
+        showToast("Save or close your pin first");
+        return;
+      }
+      if (routeOperationPending || routeDrawerBlocked()) return;
+      if (walk.points.length < 2) {
+        if (!window.confirm("No GPS route recorded yet. Stop anyway?")) return;
+        discardWalk(true);
+        return;
+      }
+      endWalkTracking();
+      closeRouteDrawer();
+      draftRoute = { memberName: walk.memberName, memberColor: walk.memberColor, points: walk.points };
+      draftRouteLine = walkLine;
+      draftFromWalk = true;
+      walkLine = null;
+      walk = null;
+      openRouteDrawer(draftRoute, true);
+    }
+
+    function discardWalk(confirmed = false) {
+      if (!walk) return;
+      if (!confirmed && !window.confirm("Discard this walk?")) return;
+      endWalkTracking();
+      if (walkLine) map.removeLayer(walkLine);
+      walkLine = null;
+      walk = null;
+      clearStoredWalk();
+    }
+
+    function resumeStoredWalk() {
+      let stored = null;
+      try {
+        stored = JSON.parse(localStorage.getItem(WALK_STORAGE_KEY) || "null");
+      } catch (e) {}
+      if (!stored || !Array.isArray(stored.points) || typeof stored.startedAt !== "number" || !("geolocation" in navigator)) return;
+      walk = {
+        memberName: String(stored.memberName || "Member 1"),
+        memberColor: /^#[0-9a-f]{6}$/i.test(stored.memberColor) ? stored.memberColor : walkColor(),
+        startedAt: stored.startedAt,
+        points: stored.points
+          .filter((p) => Number.isFinite(p?.lat) && Number.isFinite(p?.lng))
+          .slice(0, MAX_ROUTE_POINTS)
+      };
+      beginWalkTracking();
+      showToast("Walk resumed");
     }
 
     function dropPinAtUserGps() {
@@ -1572,17 +1843,29 @@
       }
 
       showToast("Getting GPS lock...");
+      let settled = false;
+      const fallbackToCenter = () => {
+        if (settled) return;
+        settled = true;
+        showToast("No GPS — pin placed at map center");
+        const c = map.getCenter();
+        openCreateDrawer(c.lat, c.lng);
+      };
+      // Dismissed permission prompts can leave the request pending forever on mobile.
+      const fallbackTimer = setTimeout(fallbackToCenter, 9000);
       navigator.geolocation.getCurrentPosition(
         (pos) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(fallbackTimer);
           const { latitude, longitude, accuracy } = pos.coords;
           updateGpsMarker(latitude, longitude, accuracy);
           map.flyTo([latitude, longitude], 17, { duration: 0.5 });
           openCreateDrawer(latitude, longitude);
         },
         () => {
-          showToast("GPS unavailable — dropping at map center");
-          const c = map.getCenter();
-          openCreateDrawer(c.lat, c.lng);
+          clearTimeout(fallbackTimer);
+          fallbackToCenter();
         },
         { enableHighAccuracy: true, timeout: 8000 }
       );
@@ -1675,7 +1958,13 @@
 
       document.getElementById("drawRouteBtn").addEventListener("click", startRouteDrawing);
       document.getElementById("cancelRouteDrawingBtn").addEventListener("click", cancelRouteDrawing);
-      closeRouteDrawerBtn.addEventListener("click", closeRouteDrawer);
+      closeRouteDrawerBtn.addEventListener("click", () => {
+        if (draftFromWalk) {
+          if (!window.confirm("Discard this walk?")) return;
+          clearStoredWalk();
+        }
+        closeRouteDrawer();
+      });
       saveRouteBtn.addEventListener("click", handleSaveRoute);
       deleteRouteBtn.addEventListener("click", handleDeleteRoute);
       routeDateInput.addEventListener("input", () => { routeError.textContent = ""; });
@@ -1747,6 +2036,11 @@
 
       // GPS Buttons
       document.getElementById("gpsLocateBtn").addEventListener("click", () => startContinuousGps(true));
+      document.getElementById("walkBtn").addEventListener("click", () => walk ? stopWalk() : startWalk());
+      document.getElementById("discardWalkBtn").addEventListener("click", () => discardWalk());
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "visible" && walk && !walkWakeLock) requestWalkWakeLock();
+      });
       document.getElementById("dropAtGpsBtn").addEventListener("click", dropPinAtUserGps);
 
       // Member Modal Controls
@@ -1754,10 +2048,32 @@
       const customInput = document.getElementById("customMemberNameInput");
       let memberNameEdited = false;
 
+      function memberSlotName(btn) {
+        const color = btn.dataset.color.toLowerCase();
+        if (String(currentMember.color).toLowerCase() === color && currentMember.name) return currentMember.name;
+        let best = null;
+        let bestAt = -1;
+        for (const pin of allPins) {
+          if (String(pin.memberColor).toLowerCase() === color && typeof pin.updatedBy === "string" &&
+              pin.updatedBy.trim() && pin.updatedBy !== "Family Team" && (pin.updatedAt || 0) > bestAt) {
+            best = pin.updatedBy.trim();
+            bestAt = pin.updatedAt || 0;
+          }
+        }
+        for (const route of allRoutes) {
+          if (String(route.memberColor).toLowerCase() === color && (route.updatedAt || 0) > bestAt) {
+            best = route.memberName.trim();
+            bestAt = route.updatedAt || 0;
+          }
+        }
+        return best || btn.dataset.slot;
+      }
+
       document.getElementById("memberProfileBtn").addEventListener("click", () => {
         customInput.value = currentMember.name;
         memberNameEdited = false;
         document.querySelectorAll(".member-slot-btn").forEach((btn) => {
+          btn.querySelector(".truncate").textContent = memberSlotName(btn);
           const selected = btn.dataset.color === currentMember.color;
           btn.classList.toggle("border-slate-900", selected);
           btn.classList.toggle("border-slate-200", !selected);
@@ -1774,7 +2090,7 @@
       document.querySelectorAll(".member-slot-btn").forEach((btn) => {
         btn.addEventListener("click", () => {
           const enteredName = customInput.value.trim();
-          const name = memberNameEdited && enteredName ? enteredName : btn.dataset.slot;
+          const name = memberNameEdited && enteredName ? enteredName : btn.querySelector(".truncate").textContent;
           saveMemberProfile(name, btn.dataset.color);
           memberModal.classList.add("hidden");
           showToast(`Searching as ${currentMember.name}`);
