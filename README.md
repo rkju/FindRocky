@@ -19,22 +19,33 @@ configuration and the shared account email are in `firebase-config.js`.
    `firebase deploy --only firestore:rules --project findrocky-d1617`.
 4. Merge the site changes into `main` for GitHub Pages to publish them.
 
-These rules make only the search-pins collection publicly readable and
-writable. Anyone can bypass the site's sign-in screen and access that data
-directly through Firebase, so do not put sensitive information in pins or
-notes. The PIN is a convenience gate for the site UI, not database security.
+Search pins remain publicly readable and writable through Firebase, even
+without the site's PIN. Do not put sensitive information in pins or notes.
+Walked routes require sign-in as the shared team account. If that account is
+recreated, update its UID in `firestore.rules`.
 
 PIN sign-in requires an internet connection and is required again after a
 reload. GitHub Pages and the site's source code remain public.
 
-**Live Sync** means the shared map is connected. **Offline** or **Sync Error**
-disables saving until the connection or rules are fixed. If shared sync cannot
-start after sign-in, **Local Only** saves pins in that browser, not to the team
-map; local pins do not automatically move to Firebase. GPS requires HTTPS and
-location permission.
+**Live Sync** means pins and routes are connected. **Offline** or **Sync
+Error** prevents saving the affected data until the connection or rules are
+fixed. If shared sync cannot start after sign-in, **Local Only** or **Partial
+Sync** indicates that some or all changes stay in that browser; local data
+does not automatically move to Firebase. GPS requires HTTPS and location
+permission.
 
 ## Search dog route
 
 `rocky-route.png` is the search dog's tracked route, cut out of the tracking
 app screenshot and georeferenced against OpenStreetMap streets (about 5 m
 accuracy). The paw button on the map toggles it.
+
+The map and search-radius rings center on 17326 Spruce Way. Use the house
+button to return to that location.
+
+## Walked routes
+
+Set your name and choose a team color in your profile. Tap **Walked**, drag a
+line over the route, choose the date searched, and save it. Tap a saved line to
+change its date or delete it. Routes are stored separately from existing pins.
+Nelly's imported route is an approximate trace; its date is not recorded.

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>Spruce Elementary Search Tracker</title>
+  <title>Spruce Search Grid</title>
 
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -45,6 +45,16 @@
       z-index: 1;
       height: 100%;
       width: 100%;
+    }
+
+    #map.drawing-route {
+      cursor: crosshair;
+      touch-action: none;
+    }
+
+    .route-hit-area:focus-visible {
+      stroke-opacity: 0.35;
+      outline: none;
     }
 
     /* Hide scrollbars on horizontal filter/stats chips */
@@ -125,7 +135,7 @@
   <header class="fixed top-0 left-0 right-0 z-20 pointer-events-none px-2.5 pt-2.5 sm:px-4 sm:pt-3 flex flex-col gap-2">
     <!-- Top Compact Status & Team Bar -->
     <div class="pointer-events-auto bg-white/95 backdrop-blur-md border-2 border-slate-900/15 shadow-lg rounded-2xl px-3 py-2 flex items-center justify-between gap-2">
-      <div class="flex items-center gap-2 min-w-0">
+      <div class="flex flex-1 items-center gap-2 min-w-[144px]">
         <div class="w-9 h-9 rounded-xl bg-amber-500 text-slate-950 flex items-center justify-center shrink-0 shadow-sm">
           <i class="ph-fill ph-paw-print text-xl"></i>
         </div>
@@ -137,14 +147,14 @@
               <span id="syncText">Connecting</span>
             </span>
           </div>
-          <p class="text-[11px] font-medium text-slate-600 truncate">17405 Spruce Way • Tap map to log</p>
+          <p class="text-[11px] font-medium text-slate-600 truncate">17326 Spruce Way</p>
         </div>
       </div>
 
       <!-- Current Family Member Badge Button -->
-      <button id="memberProfileBtn" type="button" class="min-h-[44px] px-3 py-1.5 rounded-xl bg-slate-900 text-white font-bold text-xs flex items-center gap-2 shadow-sm active:scale-95 transition shrink-0">
+      <button id="memberProfileBtn" type="button" class="min-w-0 min-h-[44px] px-3 py-1.5 rounded-xl bg-slate-900 text-white font-bold text-xs flex items-center gap-2 shadow-sm active:scale-95 transition">
         <span id="activeMemberDot" class="w-3 h-3 rounded-full bg-emerald-400 border border-white"></span>
-        <span id="activeMemberName">Set Name</span>
+        <span id="activeMemberName" class="truncate">Set Name</span>
         <i class="ph-bold ph-caret-down text-xs opacity-75"></i>
       </button>
     </div>
@@ -188,8 +198,8 @@
     </div>
   </header>
 
-  <!-- Right-Side Radius Ring Toggles & School Recenter Control -->
-  <aside class="fixed right-2.5 sm:right-4 top-32 z-20 flex flex-col gap-2">
+  <!-- Right-Side Radius Ring Toggles & Search Center Control -->
+  <aside id="mapTools" class="fixed right-2.5 sm:right-4 top-32 z-20 flex flex-col gap-2">
     <div class="bg-white/95 backdrop-blur-md border-2 border-slate-900/15 shadow-lg rounded-2xl p-1.5 flex flex-col gap-1">
       <div class="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 text-center pt-0.5">Rings</div>
       <button id="toggleRing05" type="button" class="ring-toggle min-w-[44px] min-h-[40px] px-2 rounded-xl text-xs font-extrabold bg-red-600 text-white shadow-sm transition">
@@ -211,14 +221,24 @@
       </button>
     </div>
 
-    <!-- Recenter on Spruce Elementary -->
-    <button id="recenterSchoolBtn" type="button" title="Center on search area" class="w-12 h-12 rounded-2xl bg-white/95 backdrop-blur-md border-2 border-slate-900/15 shadow-lg flex items-center justify-center text-slate-900 active:scale-95 transition">
-      <i class="ph-fill ph-graduation-cap text-xl text-amber-600"></i>
+    <!-- Recenter on the search address -->
+    <button id="recenterSearchBtn" type="button" title="Center on 17326 Spruce Way" aria-label="Center on 17326 Spruce Way" class="w-12 h-12 rounded-2xl bg-white/95 backdrop-blur-md border-2 border-slate-900/15 shadow-lg flex items-center justify-center text-slate-900 active:scale-95 transition">
+      <i class="ph-fill ph-house text-xl text-amber-600"></i>
+    </button>
+
+    <button id="drawRouteBtn" type="button" title="Draw a searched route" aria-label="Draw a searched route" class="w-12 h-12 rounded-2xl bg-white/95 backdrop-blur-md border-2 border-slate-900/15 shadow-lg flex flex-col items-center justify-center text-slate-900 active:scale-95 transition">
+      <i class="ph-fill ph-footprints text-xl"></i>
+      <span class="text-[9px] font-extrabold leading-none">Walked</span>
     </button>
   </aside>
 
+  <div id="routeDrawingBar" hidden class="fixed bottom-4 left-3 right-3 sm:left-4 sm:right-auto z-30 bg-white border-2 border-slate-900 rounded-2xl shadow-xl px-4 py-2 flex items-center justify-between gap-4">
+    <span class="text-sm font-bold">Draw your route on the map</span>
+    <button id="cancelRouteDrawingBtn" type="button" class="min-h-[44px] px-3 rounded-xl bg-slate-100 text-slate-900 text-sm font-bold">Cancel</button>
+  </div>
+
   <!-- Bottom Floating Action Bar (Thumb Zone) -->
-  <div class="fixed bottom-4 left-3 right-3 sm:left-auto sm:right-4 sm:w-96 z-20 flex items-center gap-2.5 pointer-events-none">
+  <div id="mapActionBar" class="fixed bottom-4 left-3 right-3 sm:left-auto sm:right-4 sm:w-96 z-20 flex items-center gap-2.5 pointer-events-none">
     <!-- Center on My GPS -->
     <button id="gpsLocateBtn" type="button" class="pointer-events-auto min-h-[54px] px-4 rounded-2xl bg-white border-2 border-slate-900 text-slate-900 font-extrabold text-sm shadow-xl flex items-center justify-center gap-2 active:scale-95 transition shrink-0">
       <i id="gpsIcon" class="ph-bold ph-crosshair text-xl text-blue-600"></i>
@@ -338,6 +358,35 @@
     </div>
   </div>
 
+  <div id="routeDrawer" class="bottom-sheet closed fixed bottom-0 left-0 right-0 sm:left-auto sm:right-4 sm:bottom-4 sm:w-[420px] z-30 bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl border-t-2 sm:border-2 border-slate-900/15 p-4 pb-6">
+    <div class="w-10 h-1.5 rounded-full bg-slate-300 mx-auto mb-3 sm:hidden"></div>
+    <div class="flex items-center justify-between mb-3">
+      <div>
+        <h2 class="text-base font-extrabold text-slate-900">Searched / Walked</h2>
+        <p class="flex items-center gap-1.5 text-xs font-medium text-slate-600">
+          <span id="routeAuthorColor" class="w-2.5 h-2.5 rounded-full"></span>
+          <span id="routeAuthorName"></span>
+          <span id="routeApproximate" class="hidden">· Approximate</span>
+        </p>
+      </div>
+      <button id="closeRouteDrawerBtn" type="button" aria-label="Close route" class="w-11 h-11 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center">
+        <i class="ph-bold ph-x text-lg"></i>
+      </button>
+    </div>
+    <label for="routeDateInput" class="block text-xs font-extrabold uppercase tracking-wider text-slate-500 mb-1.5">Date searched <span id="routeDateUnknown" class="hidden normal-case font-medium">(not recorded)</span></label>
+    <input id="routeDateInput" type="date" required class="w-full min-h-[48px] px-3.5 py-2.5 rounded-xl border-2 border-slate-300 bg-slate-50 text-sm font-semibold text-slate-900" />
+    <p id="routeError" role="alert" class="mt-1 text-xs font-semibold text-red-700"></p>
+    <div class="flex items-center gap-2 mt-3">
+      <button id="deleteRouteBtn" type="button" class="hidden min-h-[50px] px-4 rounded-xl bg-red-50 text-red-700 border-2 border-red-200 font-extrabold text-sm items-center justify-center gap-1.5 disabled:opacity-50">
+        <i class="ph-bold ph-trash text-lg"></i>
+        <span>Delete</span>
+      </button>
+      <button id="saveRouteBtn" type="button" class="flex-1 min-h-[50px] px-5 rounded-xl bg-slate-900 text-white font-extrabold text-sm disabled:opacity-50">
+        Save route
+      </button>
+    </div>
+  </div>
+
   <!-- Family Member Quick-Join Modal (No password friction) -->
   <div id="memberModal" class="hidden fixed inset-0 z-40 bg-slate-950/60 backdrop-blur-xs flex items-end sm:items-center justify-center p-3">
     <div class="bg-white w-full max-w-md rounded-3xl p-5 shadow-2xl border-2 border-slate-900/15">
@@ -347,7 +396,15 @@
           <i class="ph-bold ph-x text-lg"></i>
         </button>
       </div>
-      <p class="text-xs font-medium text-slate-600 mb-4">Pick a team slot or enter your first name so everyone sees who covered each cul-de-sac.</p>
+      <p class="text-xs font-medium text-slate-600 mb-3">Choose a member, or edit your name and pick a color.</p>
+
+      <label for="customMemberNameInput" class="block text-xs font-extrabold uppercase tracking-wider text-slate-500 mb-1.5">First Name</label>
+      <div class="flex gap-2 mb-4">
+        <input id="customMemberNameInput" type="text" maxlength="20" placeholder="e.g., Alex, Mom, Sam..." class="flex-1 min-w-0 min-h-[48px] px-3.5 rounded-xl border-2 border-slate-300 focus:border-slate-900 focus:outline-none text-sm font-bold text-slate-900" />
+        <button id="saveMemberBtn" type="button" class="min-h-[48px] px-5 rounded-xl bg-slate-900 text-white font-extrabold text-sm active:scale-95 transition">
+          Done
+        </button>
+      </div>
 
       <!-- 6 Preset Team Slots -->
       <div class="grid grid-cols-3 gap-2 mb-4" id="presetMemberGrid">
@@ -359,9 +416,9 @@
           <span class="w-3.5 h-3.5 rounded-full bg-blue-500 shrink-0"></span>
           <span class="truncate">Member 2</span>
         </button>
-        <button type="button" data-slot="Member 3" data-color="#f59e0b" class="member-slot-btn min-h-[46px] px-2.5 py-2 rounded-xl border-2 border-slate-200 font-bold text-xs flex items-center gap-2">
+        <button type="button" data-slot="Nelly" data-color="#f59e0b" class="member-slot-btn min-h-[46px] px-2.5 py-2 rounded-xl border-2 border-slate-200 font-bold text-xs flex items-center gap-2">
           <span class="w-3.5 h-3.5 rounded-full bg-amber-500 shrink-0"></span>
-          <span class="truncate">Member 3</span>
+          <span class="truncate">Nelly</span>
         </button>
         <button type="button" data-slot="Member 4" data-color="#a855f7" class="member-slot-btn min-h-[46px] px-2.5 py-2 rounded-xl border-2 border-slate-200 font-bold text-xs flex items-center gap-2">
           <span class="w-3.5 h-3.5 rounded-full bg-purple-500 shrink-0"></span>
@@ -377,14 +434,6 @@
         </button>
       </div>
 
-      <!-- Custom First Name Input -->
-      <label for="customMemberNameInput" class="block text-xs font-extrabold uppercase tracking-wider text-slate-500 mb-1.5">Or Type Your First Name</label>
-      <div class="flex gap-2">
-        <input id="customMemberNameInput" type="text" maxlength="20" placeholder="e.g., Alex, Mom, Sam..." class="flex-1 min-h-[48px] px-3.5 rounded-xl border-2 border-slate-300 focus:border-slate-900 focus:outline-none text-sm font-bold text-slate-900" />
-        <button id="saveMemberBtn" type="button" class="min-h-[48px] px-5 rounded-xl bg-slate-900 text-white font-extrabold text-sm active:scale-95 transition">
-          Done
-        </button>
-      </div>
     </div>
   </div>
   </div>
@@ -407,9 +456,11 @@
     // =========================================================================
     // 1. CONSTANTS & CONFIGURATION
     // =========================================================================
-    const SPRUCE_COORDS = [47.8407, -122.2817]; // Spruce Elementary School
+    const SPRUCE_COORDS = [47.840503, -122.285666]; // Spruce Elementary School
     const MAP_HOME_COORDS = [47.8411246, -122.2888459]; // 17326 Spruce Way, Lynnwood, WA 98037
     const METERS_PER_MILE = 1609.344;
+    const DEFAULT_MEMBER_COLOR = "#10b981";
+    const MAX_ROUTE_POINTS = 5000;
 
     const STATUS_CONFIG = {
       flyered: {
@@ -449,6 +500,7 @@
     // =========================================================================
     let map;
     let pinsLayerGroup;
+    let routesLayerGroup;
     let dogRouteLayer;
     const DOG_ROUTE_BOUNDS = [[47.839118, -122.289287], [47.844053, -122.287207]];
     const DOG_ROUTE_START = [47.84104, -122.288919];
@@ -471,16 +523,29 @@
     };
 
     let allPins = [];
+    let allRoutes = [];
     let activeFilter = "all";
     let editingPinId = null;
     let pendingLatLng = null;
     let selectedStatus = "flyered";
     let pinOperationPending = false;
+    let routeOperationPending = false;
+    let routeDrawing = false;
+    let routePointerId = null;
+    let routeLastPoint = null;
+    let draftRoute = null;
+    let draftRouteLine = null;
+    let editingRouteId = null;
+    let ignoreMapClicksUntil = 0;
+    let mapDraggingWasEnabled = false;
+    let mapTouchZoomWasEnabled = false;
+    let mapScrollZoomWasEnabled = false;
+    let mapDoubleClickZoomWasEnabled = false;
 
     // Team Member Profile
     let currentMember = {
       name: "",
-      color: "#10b981"
+      color: DEFAULT_MEMBER_COLOR
     };
 
     // Firebase references
@@ -488,9 +553,15 @@
     let auth = null;
     let currentUser = null;
     let pinsCollectionRef = null;
+    let routesCollectionRef = null;
     let offlineFallbackMode = false;
+    let routesLocalOnly = false;
     let syncReady = false;
+    let routeSyncReady = false;
+    let pinSyncState = "connecting";
+    let routeSyncState = "connecting";
     const LOCAL_PINS_KEY = "spruce_search_pins";
+    const LOCAL_ROUTES_KEY = "spruce_search_routes";
 
     // =========================================================================
     // 3. INITIALIZE LEAFLET MAP & SEARCH RINGS
@@ -508,8 +579,8 @@
         attribution: '&copy; OpenStreetMap'
       }).addTo(map);
 
-      // Radius Rings around Spruce Elementary
-      ringLayers.r20 = L.circle(SPRUCE_COORDS, {
+      // Radius rings around the search address
+      ringLayers.r20 = L.circle(MAP_HOME_COORDS, {
         radius: 2.0 * METERS_PER_MILE,
         color: "#475569",
         weight: 2,
@@ -519,7 +590,7 @@
         interactive: false
       });
 
-      ringLayers.r10 = L.circle(SPRUCE_COORDS, {
+      ringLayers.r10 = L.circle(MAP_HOME_COORDS, {
         radius: 1.0 * METERS_PER_MILE,
         color: "#d97706",
         weight: 2.5,
@@ -529,7 +600,7 @@
         interactive: false
       }).addTo(map);
 
-      ringLayers.r05 = L.circle(SPRUCE_COORDS, {
+      ringLayers.r05 = L.circle(MAP_HOME_COORDS, {
         radius: 0.5 * METERS_PER_MILE,
         color: "#dc2626",
         weight: 3,
@@ -538,7 +609,23 @@
         interactive: false
       }).addTo(map);
 
-      // School Anchor Marker at 17405 Spruce Way
+      const homeIcon = L.divIcon({
+        className: "",
+        html: `
+          <div style="width:34px;height:34px;background:#0f172a;color:#fbbf24;border:3px solid #ffffff;border-radius:12px;display:flex;align-items:center;justify-content:center;box-shadow:0 6px 14px rgba(0,0,0,0.4);">
+            <i class="ph-fill ph-house" style="font-size:20px;"></i>
+          </div>
+          <div style="width:2px;height:8px;background:#0f172a;margin:auto;"></div>
+        `,
+        iconSize: [34, 42],
+        iconAnchor: [17, 42]
+      });
+
+      L.marker(MAP_HOME_COORDS, { icon: homeIcon, title: "17326 Spruce Way", alt: "17326 Spruce Way", zIndexOffset: -100 })
+        .addTo(map)
+        .bindPopup("17326 Spruce Way");
+
+      // School marker at 17405 Spruce Way
       const schoolIcon = L.divIcon({
         className: "",
         html: `
@@ -556,7 +643,6 @@
           <div style="font-family:Inter,sans-serif;min-width:180px;">
             <div style="font-weight:800;font-size:13px;color:#0f172a;">Spruce Elementary School</div>
             <div style="font-size:11px;color:#475569;margin-top:2px;">17405 Spruce Way, Lynnwood</div>
-            <div style="font-size:11px;font-weight:700;color:#dc2626;margin-top:4px;">Search Center Anchor</div>
           </div>
         `);
 
@@ -569,11 +655,12 @@
           .bindTooltip("Dog track end")
       ]).addTo(map);
 
-      // Layer group for collaborative search pins
+      routesLayerGroup = L.layerGroup().addTo(map);
       pinsLayerGroup = L.layerGroup().addTo(map);
 
       // Tap anywhere on map to drop a new pin
       map.on("click", (e) => {
+        if (routeDrawing || Date.now() < ignoreMapClicksUntil) return;
         openCreateDrawer(e.latlng.lat, e.latlng.lng);
       });
     }
@@ -642,10 +729,38 @@
       });
     }
 
-    function initFirebaseSync() {
+    function updateSyncBadge() {
       const syncBadge = document.getElementById("syncBadge");
       const syncText = document.getElementById("syncText");
+      const states = [pinSyncState, routeSyncState];
+      let label;
+      let color;
 
+      if (states.includes("error")) {
+        label = "Sync Error";
+        color = "bg-red-100 text-red-900";
+      } else if (states.includes("offline")) {
+        label = "Offline";
+        color = "bg-amber-100 text-amber-900";
+      } else if (states.includes("connecting")) {
+        label = "Connecting";
+        color = "bg-amber-100 text-amber-900";
+      } else if (states.every((state) => state === "local")) {
+        label = "Local Only";
+        color = "bg-amber-100 text-amber-900";
+      } else if (states.includes("local")) {
+        label = "Partial Sync";
+        color = "bg-amber-100 text-amber-900";
+      } else {
+        label = "Live Sync";
+        color = "bg-emerald-100 text-emerald-800";
+      }
+
+      syncBadge.className = `inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold ${color}`;
+      syncText.textContent = label;
+    }
+
+    function initFirebaseSync() {
       try {
         pinsCollectionRef = collection(db, "artifacts", "spruce-dog-search", "public", "data", "search_pins");
 
@@ -661,46 +776,89 @@
             loaded.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
             allPins = loaded;
             syncReady = !snapshot.metadata.fromCache;
-
-            syncBadge.className = syncReady
-              ? "inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800"
-              : "inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-900";
-            syncText.textContent = syncReady ? "Live Sync" : "Offline";
+            pinSyncState = syncReady ? "live" : "offline";
+            updateSyncBadge();
             renderPinsAndStats();
           },
           (error) => {
-            console.error("Firestore listener error:", error);
+            console.error("Pin listener error:", error);
             syncReady = false;
-            syncBadge.className = "inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-red-100 text-red-900";
-            syncText.textContent = "Sync Error";
-            showToast("Sync unavailable — check Firebase settings");
+            pinSyncState = "error";
+            updateSyncBadge();
+            showToast("Pin sync unavailable — check Firebase settings");
           }
         );
       } catch (err) {
-        console.error("Could not start shared sync:", err);
+        console.error("Could not start pin sync:", err);
         enableOfflineFallback();
+      }
+
+      try {
+        routesCollectionRef = collection(db, "artifacts", "spruce-dog-search", "public", "data", "search_routes");
+        onSnapshot(
+          routesCollectionRef,
+          { includeMetadataChanges: true },
+          (snapshot) => {
+            const loaded = [];
+            snapshot.forEach((docSnap) => {
+              loaded.push({ ...docSnap.data(), id: docSnap.id });
+            });
+            allRoutes = loaded;
+            routeSyncReady = !snapshot.metadata.fromCache;
+            routeSyncState = routeSyncReady ? "live" : "offline";
+            updateSyncBadge();
+            renderRoutes();
+          },
+          (error) => {
+            console.error("Walked route listener error:", error);
+            routeSyncReady = false;
+            routeSyncState = "error";
+            updateSyncBadge();
+            showToast("Route sync unavailable — check Firebase settings");
+          }
+        );
+      } catch (error) {
+        console.error("Could not start route sync:", error);
+        enableRouteOfflineFallback();
       }
     }
 
     function enableOfflineFallback() {
       offlineFallbackMode = true;
-      const syncBadge = document.getElementById("syncBadge");
-      const syncText = document.getElementById("syncText");
-      syncBadge.className = "inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-900";
-      syncText.textContent = "Local Only";
       try {
         const saved = localStorage.getItem(LOCAL_PINS_KEY);
         const localPins = saved ? JSON.parse(saved) : [];
         if (!Array.isArray(localPins)) throw new Error("Invalid local pin data");
         allPins = localPins;
         syncReady = true;
-        showToast("Shared sync unavailable — local only");
+        pinSyncState = "local";
+        showToast("Shared pins unavailable — local only");
       } catch (error) {
         console.error("Could not load local pins:", error);
-        syncText.textContent = "Storage Error";
+        pinSyncState = "error";
         showToast("Could not load local pins");
       }
+      updateSyncBadge();
       renderPinsAndStats();
+    }
+
+    function enableRouteOfflineFallback() {
+      routesLocalOnly = true;
+      try {
+        const saved = localStorage.getItem(LOCAL_ROUTES_KEY);
+        const localRoutes = saved ? JSON.parse(saved) : [];
+        if (!Array.isArray(localRoutes)) throw new Error("Invalid local route data");
+        allRoutes = localRoutes;
+        routeSyncReady = true;
+        routeSyncState = "local";
+        showToast("Shared routes unavailable — local only");
+      } catch (error) {
+        console.error("Could not load local routes:", error);
+        routeSyncState = "error";
+        showToast("Could not load local routes");
+      }
+      updateSyncBadge();
+      renderRoutes();
     }
 
     function saveLocalPins(pins) {
@@ -712,6 +870,19 @@
       } catch (error) {
         console.error("Could not save local pins:", error);
         showToast("Could not save on this device");
+        return false;
+      }
+    }
+
+    function saveLocalRoutes(routes) {
+      try {
+        localStorage.setItem(LOCAL_ROUTES_KEY, JSON.stringify(routes));
+        allRoutes = routes;
+        renderRoutes();
+        return true;
+      } catch (error) {
+        console.error("Could not save local routes:", error);
+        showToast("Could not save route on this device");
         return false;
       }
     }
@@ -773,6 +944,70 @@
       });
     }
 
+    function isValidRouteDate(value) {
+      if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+      const timestamp = Date.parse(`${value}T00:00:00Z`);
+      return Number.isFinite(timestamp) && new Date(timestamp).toISOString().slice(0, 10) === value;
+    }
+
+    function isValidRoute(route) {
+      return route && typeof route.memberName === "string" && route.memberName.trim() !== "" &&
+        typeof route.memberColor === "string" && /^#[0-9a-f]{6}$/i.test(route.memberColor) &&
+        (route.searchedDate === null || isValidRouteDate(route.searchedDate)) &&
+        Array.isArray(route.points) && route.points.length >= 2 && route.points.length <= MAX_ROUTE_POINTS &&
+        route.points.every((point) => point && Number.isFinite(point.lat) && Number.isFinite(point.lng) &&
+          Math.abs(point.lat) <= 90 && Math.abs(point.lng) <= 180);
+    }
+
+    function renderRoutes() {
+      routesLayerGroup.clearLayers();
+      let invalidRoute = false;
+
+      allRoutes.forEach((route) => {
+        if (!isValidRoute(route)) {
+          console.error("Invalid searched route:", route.id);
+          invalidRoute = true;
+          return;
+        }
+
+        const points = route.points.map((point) => [point.lat, point.lng]);
+        const hitArea = L.polyline(points, {
+          color: route.memberColor,
+          weight: 26,
+          opacity: 0.001,
+          className: "route-hit-area"
+        }).addTo(routesLayerGroup);
+        L.polyline(points, {
+          color: route.memberColor,
+          weight: 6,
+          opacity: 0.9,
+          interactive: false
+        }).addTo(routesLayerGroup);
+
+        hitArea.on("click", (event) => {
+          L.DomEvent.stopPropagation(event);
+          if (!routeDrawing && Date.now() >= ignoreMapClicksUntil) openRouteDrawer(route);
+        });
+
+        const path = hitArea.getElement();
+        if (path) {
+          path.setAttribute("tabindex", "0");
+          path.setAttribute("role", "button");
+          const accuracy = route.approximate === true ? ", approximate" : "";
+          path.setAttribute("aria-label", `Searched route by ${route.memberName}${accuracy}, ${route.searchedDate || "date not recorded"}`);
+          path.addEventListener("keydown", (event) => {
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              event.stopPropagation();
+              openRouteDrawer(route);
+            }
+          });
+        }
+      });
+
+      if (invalidRoute) showToast("Some routes could not be displayed");
+    }
+
     // =========================================================================
     // 6. BOTTOM SHEET DRAWER LOGIC (ADD / EDIT / DELETE)
     // =========================================================================
@@ -827,6 +1062,8 @@
     }
 
     function openCreateDrawer(lat, lng) {
+      if (routeDrawerBlocked()) return;
+      closeRouteDrawer();
       editingPinId = null;
       pendingLatLng = { lat, lng };
       selectedStatus = "flyered";
@@ -847,6 +1084,8 @@
     }
 
     function openEditDrawer(pin) {
+      if (routeDrawerBlocked()) return;
+      closeRouteDrawer();
       clearDraftMarker();
       editingPinId = pin.id;
       pendingLatLng = { lat: pin.lat, lng: pin.lng };
@@ -959,7 +1198,297 @@
     }
 
     // =========================================================================
-    // 7. LIVE GPS TRACKING & "DROP AT MY SPOT"
+    // 7. DRAWN SEARCH ROUTES
+    // =========================================================================
+    const routeDrawer = document.getElementById("routeDrawer");
+    const routeDateInput = document.getElementById("routeDateInput");
+    const routeError = document.getElementById("routeError");
+    const saveRouteBtn = document.getElementById("saveRouteBtn");
+    const deleteRouteBtn = document.getElementById("deleteRouteBtn");
+    const closeRouteDrawerBtn = document.getElementById("closeRouteDrawerBtn");
+
+    function routeDrawerBlocked() {
+      if (routeOperationPending) return true;
+      if (draftRoute && routeDrawer.classList.contains("open")) {
+        showToast("Save or close your route first");
+        return true;
+      }
+      return false;
+    }
+
+    function clearDraftRoute() {
+      if (draftRouteLine) map.removeLayer(draftRouteLine);
+      draftRouteLine = null;
+      draftRoute = null;
+      routeLastPoint = null;
+    }
+
+    function setRouteDrawing(active) {
+      routeDrawing = active;
+      document.getElementById("mapTools").hidden = active;
+      document.getElementById("mapActionBar").hidden = active;
+      document.getElementById("routeDrawingBar").hidden = !active;
+      map.getContainer().classList.toggle("drawing-route", active);
+
+      if (active) {
+        mapDraggingWasEnabled = map.dragging.enabled();
+        mapTouchZoomWasEnabled = map.touchZoom.enabled();
+        mapScrollZoomWasEnabled = map.scrollWheelZoom.enabled();
+        mapDoubleClickZoomWasEnabled = map.doubleClickZoom.enabled();
+        map.dragging.disable();
+        map.touchZoom.disable();
+        map.scrollWheelZoom.disable();
+        map.doubleClickZoom.disable();
+      } else {
+        if (mapDraggingWasEnabled) map.dragging.enable();
+        if (mapTouchZoomWasEnabled) map.touchZoom.enable();
+        if (mapScrollZoomWasEnabled) map.scrollWheelZoom.enable();
+        if (mapDoubleClickZoomWasEnabled) map.doubleClickZoom.enable();
+      }
+    }
+
+    function startRouteDrawing() {
+      if (!routeSyncReady) {
+        showToast("Routes are not ready to save");
+        return;
+      }
+      if (typeof map.getContainer().setPointerCapture !== "function") {
+        showToast("Drawing is not supported in this browser");
+        return;
+      }
+      if (pinOperationPending || routeDrawerBlocked()) return;
+      if (pinDrawer.classList.contains("open")) {
+        showToast("Save or close your pin first");
+        return;
+      }
+      closeRouteDrawer();
+      clearDraftRoute();
+      setRouteDrawing(true);
+    }
+
+    function cancelRouteDrawing() {
+      const container = map.getContainer();
+      if (routePointerId !== null && container.hasPointerCapture?.(routePointerId)) {
+        container.releasePointerCapture(routePointerId);
+      }
+      routePointerId = null;
+      clearDraftRoute();
+      ignoreMapClicksUntil = Date.now() + 500;
+      setRouteDrawing(false);
+    }
+
+    function beginRouteStroke(event) {
+      if (!routeDrawing || routePointerId !== null || !event.isPrimary ||
+          (event.pointerType === "mouse" && event.button !== 0)) return;
+      event.preventDefault();
+      event.stopPropagation();
+
+      const color = typeof currentMember.color === "string" && /^#[0-9a-f]{6}$/i.test(currentMember.color)
+        ? currentMember.color
+        : DEFAULT_MEMBER_COLOR;
+      if (color !== currentMember.color) console.error("Invalid team color; using the default");
+      draftRoute = {
+        memberName: typeof currentMember.name === "string" && currentMember.name.trim()
+          ? currentMember.name.trim()
+          : "Member 1",
+        memberColor: color,
+        points: []
+      };
+      draftRouteLine = L.polyline([], { color, weight: 6, opacity: 0.9, interactive: false }).addTo(map);
+      routePointerId = event.pointerId;
+      try {
+        map.getContainer().setPointerCapture(event.pointerId);
+      } catch (error) {
+        console.error("Could not start route drawing:", error);
+        cancelRouteDrawing();
+        showToast("Could not start drawing. Try again.");
+        return;
+      }
+      addRoutePoint(event);
+    }
+
+    function addRoutePoint(event) {
+      if (!draftRoute || routePointerId !== event.pointerId) return;
+      const point = map.mouseEventToContainerPoint(event);
+      if (routeLastPoint && point.distanceTo(routeLastPoint) < 3) return;
+
+      const latLng = map.containerPointToLatLng(point);
+      draftRoute.points.push({
+        lat: Number(latLng.lat.toFixed(6)),
+        lng: Number(latLng.lng.toFixed(6))
+      });
+      draftRouteLine.addLatLng(latLng);
+      routeLastPoint = point;
+
+      if (draftRoute.points.length >= MAX_ROUTE_POINTS) {
+        finishRouteStroke();
+        showToast("Route limit reached — save this segment");
+      }
+    }
+
+    function finishRouteStroke() {
+      const container = map.getContainer();
+      const pointerId = routePointerId;
+      routePointerId = null;
+      if (pointerId !== null && container.hasPointerCapture?.(pointerId)) {
+        container.releasePointerCapture(pointerId);
+      }
+
+      if (!draftRoute || draftRoute.points.length < 2) {
+        clearDraftRoute();
+        showToast("Drag on the map to draw a line");
+        return;
+      }
+
+      ignoreMapClicksUntil = Date.now() + 500;
+      setRouteDrawing(false);
+      openRouteDrawer(draftRoute, true);
+    }
+
+    function moveRouteStroke(event) {
+      if (!routeDrawing || routePointerId !== event.pointerId) return;
+      event.preventDefault();
+      event.stopPropagation();
+      addRoutePoint(event);
+    }
+
+    function endRouteStroke(event) {
+      if (!routeDrawing || routePointerId !== event.pointerId) return;
+      event.preventDefault();
+      event.stopPropagation();
+      addRoutePoint(event);
+      if (routePointerId !== null) finishRouteStroke();
+    }
+
+    function interruptRouteStroke(event) {
+      if (!routeDrawing || routePointerId !== event.pointerId) return;
+      routePointerId = null;
+      clearDraftRoute();
+      showToast("Drawing interrupted. Try again.");
+    }
+
+    function todayLocal() {
+      const date = new Date();
+      return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+    }
+
+    function openRouteDrawer(route, isNew = false) {
+      if (pinOperationPending || routeOperationPending) return;
+      if (pinDrawer.classList.contains("open")) {
+        showToast("Save or close your pin first");
+        return;
+      }
+      if (!isNew && routeDrawerBlocked()) return;
+      if (!isNew) clearDraftRoute();
+      editingRouteId = isNew ? null : route.id;
+      document.getElementById("routeAuthorName").textContent = route.memberName;
+      document.getElementById("routeAuthorColor").style.backgroundColor = route.memberColor;
+      document.getElementById("routeApproximate").classList.toggle("hidden", route.approximate !== true);
+      document.getElementById("routeDateUnknown").classList.toggle("hidden", isNew || route.searchedDate !== null);
+      routeDateInput.value = isNew ? todayLocal() : route.searchedDate || "";
+      routeError.textContent = "";
+      deleteRouteBtn.classList.toggle("hidden", isNew);
+      deleteRouteBtn.classList.toggle("flex", !isNew);
+      saveRouteBtn.textContent = isNew ? "Save route" : "Update date";
+      routeDrawer.classList.remove("closed");
+      routeDrawer.classList.add("open");
+    }
+
+    function closeRouteDrawer() {
+      clearDraftRoute();
+      editingRouteId = null;
+      routeDrawer.classList.remove("open");
+      routeDrawer.classList.add("closed");
+    }
+
+    function setRouteOperationPending(pending) {
+      routeOperationPending = pending;
+      saveRouteBtn.disabled = pending;
+      deleteRouteBtn.disabled = pending;
+      closeRouteDrawerBtn.disabled = pending;
+      routeDateInput.disabled = pending;
+    }
+
+    async function handleSaveRoute() {
+      if (routeOperationPending) return;
+      if (!routeSyncReady) {
+        showToast("Routes are not ready to save");
+        return;
+      }
+      const searchedDate = routeDateInput.value;
+      if (!isValidRouteDate(searchedDate)) {
+        routeError.textContent = "Choose a valid date.";
+        routeDateInput.focus();
+        return;
+      }
+
+      const targetId = editingRouteId;
+      const targetDraft = draftRoute;
+      if (!targetId && !targetDraft) {
+        showToast("Draw a route first");
+        return;
+      }
+
+      const updatedAt = Date.now();
+      setRouteOperationPending(true);
+      try {
+        if (routesLocalOnly) {
+          let updatedRoutes;
+          if (targetId) {
+            if (!allRoutes.some((route) => route.id === targetId)) throw new Error("Route no longer exists");
+            updatedRoutes = allRoutes.map((route) => route.id === targetId ? { ...route, searchedDate, updatedAt } : route);
+          } else {
+            updatedRoutes = [{ ...targetDraft, id: crypto.randomUUID(), searchedDate, updatedAt }, ...allRoutes];
+          }
+          if (!saveLocalRoutes(updatedRoutes)) return;
+          showToast("Route saved on this device only");
+        } else {
+          if (!currentUser || !routesCollectionRef) throw new Error("Shared route sync is not initialized");
+          if (targetId) {
+            await updateDoc(doc(routesCollectionRef, targetId), { searchedDate, updatedAt });
+          } else {
+            await addDoc(routesCollectionRef, { ...targetDraft, searchedDate, updatedAt });
+          }
+          showToast("Route shared with team");
+        }
+        if (editingRouteId === targetId && draftRoute === targetDraft) closeRouteDrawer();
+      } catch (error) {
+        console.error("Route save error:", error);
+        showToast("Could not save route — check connection");
+      } finally {
+        setRouteOperationPending(false);
+      }
+    }
+
+    async function handleDeleteRoute() {
+      if (!editingRouteId || routeOperationPending) return;
+      if (!routeSyncReady) {
+        showToast("Routes are not ready to save");
+        return;
+      }
+      if (!window.confirm("Delete this searched route?")) return;
+
+      const targetId = editingRouteId;
+      setRouteOperationPending(true);
+      try {
+        if (routesLocalOnly) {
+          if (!saveLocalRoutes(allRoutes.filter((route) => route.id !== targetId))) return;
+        } else {
+          if (!currentUser || !routesCollectionRef) throw new Error("Shared route sync is not initialized");
+          await deleteDoc(doc(routesCollectionRef, targetId));
+        }
+        if (editingRouteId === targetId) closeRouteDrawer();
+        showToast("Route removed");
+      } catch (error) {
+        console.error("Route delete error:", error);
+        showToast("Could not delete route");
+      } finally {
+        setRouteOperationPending(false);
+      }
+    }
+
+    // =========================================================================
+    // 8. LIVE GPS TRACKING & "DROP AT MY SPOT"
     // =========================================================================
     function updateGpsMarker(lat, lng, accuracy) {
       latestUserLatLng = { lat, lng };
@@ -1144,6 +1673,18 @@
       document.getElementById("savePinBtn").addEventListener("click", handleSavePin);
       document.getElementById("deletePinBtn").addEventListener("click", handleDeletePin);
 
+      document.getElementById("drawRouteBtn").addEventListener("click", startRouteDrawing);
+      document.getElementById("cancelRouteDrawingBtn").addEventListener("click", cancelRouteDrawing);
+      closeRouteDrawerBtn.addEventListener("click", closeRouteDrawer);
+      saveRouteBtn.addEventListener("click", handleSaveRoute);
+      deleteRouteBtn.addEventListener("click", handleDeleteRoute);
+      routeDateInput.addEventListener("input", () => { routeError.textContent = ""; });
+      const mapContainer = map.getContainer();
+      mapContainer.addEventListener("pointerdown", beginRouteStroke, { capture: true });
+      mapContainer.addEventListener("pointermove", moveRouteStroke, { capture: true });
+      mapContainer.addEventListener("pointerup", endRouteStroke, { capture: true });
+      mapContainer.addEventListener("pointercancel", interruptRouteStroke, { capture: true });
+
       // Filter chips
       document.querySelectorAll(".filter-chip").forEach((chip) => {
         chip.addEventListener("click", () => {
@@ -1199,9 +1740,9 @@
       });
 
       // Recenter on the requested search area
-      document.getElementById("recenterSchoolBtn").addEventListener("click", () => {
+      document.getElementById("recenterSearchBtn").addEventListener("click", () => {
         map.flyTo(MAP_HOME_COORDS, 15, { duration: 0.6 });
-        showToast("Centered on search area");
+        showToast("Centered on 17326 Spruce Way");
       });
 
       // GPS Buttons
@@ -1211,9 +1752,17 @@
       // Member Modal Controls
       const memberModal = document.getElementById("memberModal");
       const customInput = document.getElementById("customMemberNameInput");
+      let memberNameEdited = false;
 
       document.getElementById("memberProfileBtn").addEventListener("click", () => {
         customInput.value = currentMember.name;
+        memberNameEdited = false;
+        document.querySelectorAll(".member-slot-btn").forEach((btn) => {
+          const selected = btn.dataset.color === currentMember.color;
+          btn.classList.toggle("border-slate-900", selected);
+          btn.classList.toggle("border-slate-200", !selected);
+          btn.setAttribute("aria-pressed", String(selected));
+        });
         memberModal.classList.remove("hidden");
       });
 
@@ -1221,11 +1770,14 @@
         memberModal.classList.add("hidden");
       });
 
+      customInput.addEventListener("input", () => { memberNameEdited = true; });
       document.querySelectorAll(".member-slot-btn").forEach((btn) => {
         btn.addEventListener("click", () => {
-          saveMemberProfile(btn.dataset.slot, btn.dataset.color);
+          const enteredName = customInput.value.trim();
+          const name = memberNameEdited && enteredName ? enteredName : btn.dataset.slot;
+          saveMemberProfile(name, btn.dataset.color);
           memberModal.classList.add("hidden");
-          showToast(`Searching as ${btn.dataset.slot}`);
+          showToast(`Searching as ${currentMember.name}`);
         });
       });
 
