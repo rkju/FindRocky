@@ -1,0 +1,1097 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Spruce Elementary Search Tracker</title>
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Google Fonts: Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700;800&display=swap" rel="stylesheet" />
+
+  <!-- Leaflet CSS & JS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+
+  <!-- Phosphor Icons for crisp outdoor visibility -->
+  <script src="https://unpkg.com/@phosphor-icons/web"></script>
+
+  <style>
+    * {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    html, body {
+      height: 100%;
+      width: 100%;
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background-color: #f8fafc;
+    }
+
+    #map {
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+      height: 100%;
+      width: 100%;
+    }
+
+    /* Hide scrollbars on horizontal filter/stats chips */
+    .no-scrollbar::-webkit-scrollbar {
+      display: none;
+    }
+    .no-scrollbar {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+
+    /* Pulsing GPS live dot */
+    @keyframes gpsPulse {
+      0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(37, 99, 235, 0.7); }
+      70% { transform: scale(1); box-shadow: 0 0 0 14px rgba(37, 99, 235, 0); }
+      100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(37, 99, 235, 0); }
+    }
+    .gps-marker-dot {
+      width: 18px;
+      height: 18px;
+      background: #2563eb;
+      border: 3px solid #ffffff;
+      border-radius: 9999px;
+      animation: gpsPulse 2s infinite;
+    }
+
+    /* Custom Leaflet marker pin styling */
+    .custom-pin {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 9999px;
+      border: 3px solid #ffffff;
+      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.35);
+      transition: transform 0.15s ease;
+    }
+    .custom-pin:active {
+      transform: scale(1.15);
+    }
+
+    /* Smooth bottom sheet drawer transition */
+    .bottom-sheet {
+      transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+      will-change: transform;
+    }
+    .bottom-sheet.closed {
+      transform: translateY(105%);
+    }
+    .bottom-sheet.open {
+      transform: translateY(0%);
+    }
+  </style>
+</head>
+<body class="select-none text-slate-900">
+
+  <!-- Full-Screen Interactive Map -->
+  <div id="map"></div>
+
+  <!-- Top HUD: Header, Live Stats & Filter Chips -->
+  <header class="fixed top-0 left-0 right-0 z-20 pointer-events-none px-2.5 pt-2.5 sm:px-4 sm:pt-3 flex flex-col gap-2">
+    <!-- Top Compact Status & Team Bar -->
+    <div class="pointer-events-auto bg-white/95 backdrop-blur-md border-2 border-slate-900/15 shadow-lg rounded-2xl px-3 py-2 flex items-center justify-between gap-2">
+      <div class="flex items-center gap-2 min-w-0">
+        <div class="w-9 h-9 rounded-xl bg-amber-500 text-slate-950 flex items-center justify-center shrink-0 shadow-sm">
+          <i class="ph-fill ph-paw-print text-xl"></i>
+        </div>
+        <div class="min-w-0">
+          <div class="flex items-center gap-1.5">
+            <h1 class="text-sm sm:text-base font-extrabold tracking-tight text-slate-900 truncate">Spruce Search Grid</h1>
+            <span id="syncBadge" class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">
+              <span class="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse"></span>
+              <span id="syncText">Connecting</span>
+            </span>
+          </div>
+          <p class="text-[11px] font-medium text-slate-600 truncate">17405 Spruce Way • Tap map to log</p>
+        </div>
+      </div>
+
+      <!-- Current Family Member Badge Button -->
+      <button id="memberProfileBtn" type="button" class="min-h-[44px] px-3 py-1.5 rounded-xl bg-slate-900 text-white font-bold text-xs flex items-center gap-2 shadow-sm active:scale-95 transition shrink-0">
+        <span id="activeMemberDot" class="w-3 h-3 rounded-full bg-emerald-400 border border-white"></span>
+        <span id="activeMemberName">Set Name</span>
+        <i class="ph-bold ph-caret-down text-xs opacity-75"></i>
+      </button>
+    </div>
+
+    <!-- Live Counters & Status Filter Chips (Horizontal Scrollable for Mobile) -->
+    <div class="pointer-events-auto flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1">
+      <button data-filter="all" class="filter-chip active min-h-[40px] px-3 py-1.5 rounded-xl font-bold text-xs bg-slate-900 text-white shadow-md border-2 border-slate-900 shrink-0 flex items-center gap-1.5">
+        <span>All</span>
+        <span id="count-all" class="px-1.5 py-0.5 rounded-md bg-white/20 text-[11px]">0</span>
+      </button>
+
+      <button data-filter="flyered" class="filter-chip min-h-[40px] px-3 py-1.5 rounded-xl font-bold text-xs bg-white/95 text-slate-900 shadow-md border-2 border-emerald-600 shrink-0 flex items-center gap-1.5">
+        <span class="w-2.5 h-2.5 rounded-full bg-emerald-600"></span>
+        <span>Flyered</span>
+        <span id="count-flyered" class="px-1.5 py-0.5 rounded-md bg-emerald-100 text-emerald-900 text-[11px]">0</span>
+      </button>
+
+      <button data-filter="poster" class="filter-chip min-h-[40px] px-3 py-1.5 rounded-xl font-bold text-xs bg-white/95 text-slate-900 shadow-md border-2 border-blue-600 shrink-0 flex items-center gap-1.5">
+        <span class="w-2.5 h-2.5 rounded-full bg-blue-600"></span>
+        <span>Posters</span>
+        <span id="count-poster" class="px-1.5 py-0.5 rounded-md bg-blue-100 text-blue-900 text-[11px]">0</span>
+      </button>
+
+      <button data-filter="camera" class="filter-chip min-h-[40px] px-3 py-1.5 rounded-xl font-bold text-xs bg-white/95 text-slate-900 shadow-md border-2 border-purple-600 shrink-0 flex items-center gap-1.5">
+        <span class="w-2.5 h-2.5 rounded-full bg-purple-600"></span>
+        <span>Cameras</span>
+        <span id="count-camera" class="px-1.5 py-0.5 rounded-md bg-purple-100 text-purple-900 text-[11px]">0</span>
+      </button>
+
+      <button data-filter="priority" class="filter-chip min-h-[40px] px-3 py-1.5 rounded-xl font-bold text-xs bg-white/95 text-slate-900 shadow-md border-2 border-red-600 shrink-0 flex items-center gap-1.5">
+        <span class="w-2.5 h-2.5 rounded-full bg-red-600"></span>
+        <span>Priority</span>
+        <span id="count-priority" class="px-1.5 py-0.5 rounded-md bg-red-100 text-red-900 text-[11px]">0</span>
+      </button>
+
+      <button data-filter="sighting" class="filter-chip min-h-[40px] px-3 py-1.5 rounded-xl font-bold text-xs bg-white/95 text-slate-900 shadow-md border-2 border-amber-500 shrink-0 flex items-center gap-1.5">
+        <span class="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
+        <span>Leads</span>
+        <span id="count-sighting" class="px-1.5 py-0.5 rounded-md bg-amber-100 text-amber-950 text-[11px]">0</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Right-Side Radius Ring Toggles & School Recenter Control -->
+  <aside class="fixed right-2.5 sm:right-4 top-32 z-20 flex flex-col gap-2">
+    <div class="bg-white/95 backdrop-blur-md border-2 border-slate-900/15 shadow-lg rounded-2xl p-1.5 flex flex-col gap-1">
+      <div class="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 text-center pt-0.5">Rings</div>
+      <button id="toggleRing05" type="button" class="ring-toggle min-w-[44px] min-h-[40px] px-2 rounded-xl text-xs font-extrabold bg-red-600 text-white shadow-sm transition">
+        0.5m
+      </button>
+      <button id="toggleRing10" type="button" class="ring-toggle min-w-[44px] min-h-[40px] px-2 rounded-xl text-xs font-extrabold bg-amber-500 text-slate-950 shadow-sm transition">
+        1.0m
+      </button>
+      <button id="toggleRing20" type="button" class="ring-toggle min-w-[44px] min-h-[40px] px-2 rounded-xl text-xs font-extrabold bg-slate-200 text-slate-700 transition">
+        2.0m
+      </button>
+    </div>
+
+    <!-- Recenter on Spruce Elementary -->
+    <button id="recenterSchoolBtn" type="button" title="Center on Spruce Elementary" class="w-12 h-12 rounded-2xl bg-white/95 backdrop-blur-md border-2 border-slate-900/15 shadow-lg flex items-center justify-center text-slate-900 active:scale-95 transition">
+      <i class="ph-fill ph-graduation-cap text-xl text-amber-600"></i>
+    </button>
+  </aside>
+
+  <!-- Bottom Floating Action Bar (Thumb Zone) -->
+  <div class="fixed bottom-4 left-3 right-3 sm:left-auto sm:right-4 sm:w-96 z-20 flex items-center gap-2.5 pointer-events-none">
+    <!-- Center on My GPS -->
+    <button id="gpsLocateBtn" type="button" class="pointer-events-auto min-h-[54px] px-4 rounded-2xl bg-white border-2 border-slate-900 text-slate-900 font-extrabold text-sm shadow-xl flex items-center justify-center gap-2 active:scale-95 transition shrink-0">
+      <i id="gpsIcon" class="ph-bold ph-crosshair text-xl text-blue-600"></i>
+      <span>My GPS</span>
+    </button>
+
+    <!-- Primary CTA: Drop Pin at My GPS Location -->
+    <button id="dropAtGpsBtn" type="button" class="pointer-events-auto flex-1 min-h-[54px] px-4 rounded-2xl bg-slate-900 text-white font-extrabold text-sm shadow-xl flex items-center justify-center gap-2 active:scale-95 transition border-2 border-slate-900">
+      <i class="ph-fill ph-map-pin-plus text-xl text-emerald-400"></i>
+      <span>Log My Spot</span>
+    </button>
+  </div>
+
+  <!-- Toast Notification Banner (Non-blocking feedback) -->
+  <div id="toastBanner" class="fixed top-28 left-1/2 -translate-x-1/2 z-40 pointer-events-none opacity-0 transition-opacity duration-200">
+    <div id="toastContent" class="bg-slate-900 text-white text-xs font-bold px-4 py-2.5 rounded-full shadow-xl border border-white/15 whitespace-nowrap">
+      Saved!
+    </div>
+  </div>
+
+  <!-- Bottom Sheet Drawer: Add or Edit Canvassing Pin -->
+  <div id="pinDrawer" class="bottom-sheet closed fixed bottom-0 left-0 right-0 sm:left-auto sm:right-4 sm:bottom-4 sm:w-[420px] z-30 bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl border-t-2 sm:border-2 border-slate-900/15 p-4 pb-6 max-h-[85vh] overflow-y-auto">
+    <!-- Drag Handle & Header -->
+    <div class="w-10 h-1.5 bg-slate-300 rounded-full mx-auto mb-3 sm:hidden"></div>
+    <div class="flex items-center justify-between mb-3">
+      <div>
+        <h2 id="drawerTitle" class="text-base font-extrabold text-slate-900">Log Search Spot</h2>
+        <p id="drawerCoords" class="text-xs font-medium text-slate-500">47.8407, -122.2817</p>
+      </div>
+      <button id="closeDrawerBtn" type="button" class="w-11 h-11 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center active:scale-95">
+        <i class="ph-bold ph-x text-lg"></i>
+      </button>
+    </div>
+
+    <!-- Status Selection Grid (Large 44px+ Thumb Targets) -->
+    <label class="block text-xs font-extrabold uppercase tracking-wider text-slate-500 mb-2">Select Status</label>
+    <div id="statusSelectorGrid" class="grid grid-cols-1 gap-2 mb-3.5">
+      <button type="button" data-status="flyered" class="status-option min-h-[48px] px-3.5 py-2 rounded-xl border-2 border-slate-200 flex items-center gap-3 text-left font-bold text-sm transition">
+        <span class="w-7 h-7 rounded-lg bg-emerald-600 text-white flex items-center justify-center shrink-0">
+          <i class="ph-fill ph-check-circle text-base"></i>
+        </span>
+        <div class="flex-1">
+          <div class="text-slate-900 leading-tight">Flyered (Door-to-Door)</div>
+          <div class="text-[11px] font-medium text-slate-500">Cul-de-sac or street houses completed</div>
+        </div>
+      </button>
+
+      <button type="button" data-status="poster" class="status-option min-h-[48px] px-3.5 py-2 rounded-xl border-2 border-slate-200 flex items-center gap-3 text-left font-bold text-sm transition">
+        <span class="w-7 h-7 rounded-lg bg-blue-600 text-white flex items-center justify-center shrink-0">
+          <i class="ph-fill ph-signpost text-base"></i>
+        </span>
+        <div class="flex-1">
+          <div class="text-slate-900 leading-tight">Poster / Sign Placed</div>
+          <div class="text-[11px] font-medium text-slate-500">Intersection, pole, or high-visibility corner</div>
+        </div>
+      </button>
+
+      <button type="button" data-status="camera" class="status-option min-h-[48px] px-3.5 py-2 rounded-xl border-2 border-slate-200 flex items-center gap-3 text-left font-bold text-sm transition">
+        <span class="w-7 h-7 rounded-lg bg-purple-600 text-white flex items-center justify-center shrink-0">
+          <i class="ph-fill ph-security-camera text-base"></i>
+        </span>
+        <div class="flex-1">
+          <div class="text-slate-900 leading-tight">Camera Checked / Asked</div>
+          <div class="text-[11px] font-medium text-slate-500">Ring/Nest doorbell or business footage checked</div>
+        </div>
+      </button>
+
+      <button type="button" data-status="priority" class="status-option min-h-[48px] px-3.5 py-2 rounded-xl border-2 border-slate-200 flex items-center gap-3 text-left font-bold text-sm transition">
+        <span class="w-7 h-7 rounded-lg bg-red-600 text-white flex items-center justify-center shrink-0">
+          <i class="ph-fill ph-warning-circle text-base"></i>
+        </span>
+        <div class="flex-1">
+          <div class="text-slate-900 leading-tight">Needs Canvassing / Priority</div>
+          <div class="text-[11px] font-medium text-slate-500">Uncovered street, apartments, or follow-up needed</div>
+        </div>
+      </button>
+
+      <button type="button" data-status="sighting" class="status-option min-h-[48px] px-3.5 py-2 rounded-xl border-2 border-slate-200 flex items-center gap-3 text-left font-bold text-sm transition">
+        <span class="w-7 h-7 rounded-lg bg-amber-500 text-slate-950 flex items-center justify-center shrink-0">
+          <i class="ph-fill ph-star text-base"></i>
+        </span>
+        <div class="flex-1">
+          <div class="text-slate-900 leading-tight">Sighting / Lead</div>
+          <div class="text-[11px] font-medium text-slate-500">Potential tip, neighbor saw dog, or vehicle lead</div>
+        </div>
+      </button>
+    </div>
+
+    <!-- Quick Preset Note Chips -->
+    <div class="mb-2">
+      <label for="pinNoteInput" class="block text-xs font-extrabold uppercase tracking-wider text-slate-500 mb-1.5">Quick Note / Street Details</label>
+      <div class="flex gap-1.5 overflow-x-auto no-scrollbar pb-2">
+        <button type="button" class="quick-note-chip min-h-[36px] px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-xs font-bold text-slate-700 shrink-0">Cul-de-sac done</button>
+        <button type="button" class="quick-note-chip min-h-[36px] px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-xs font-bold text-slate-700 shrink-0">Both sides flyered</button>
+        <button type="button" class="quick-note-chip min-h-[36px] px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-xs font-bold text-slate-700 shrink-0">Poster at corner</button>
+        <button type="button" class="quick-note-chip min-h-[36px] px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-xs font-bold text-slate-700 shrink-0">Has Ring camera</button>
+        <button type="button" class="quick-note-chip min-h-[36px] px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-xs font-bold text-slate-700 shrink-0">Needs follow-up</button>
+      </div>
+      <input id="pinNoteInput" type="text" maxlength="140" placeholder="e.g., 172nd Pl SW cul-de-sac all houses done..." class="w-full min-h-[46px] px-3.5 py-2.5 rounded-xl border-2 border-slate-300 focus:border-slate-900 focus:outline-none text-sm font-semibold text-slate-900 bg-slate-50" />
+    </div>
+
+    <!-- Existing Pin Audit Info -->
+    <div id="pinAuditInfo" class="hidden text-xs font-medium text-slate-500 bg-slate-100 rounded-xl px-3 py-2 mb-3">
+      Logged by <strong id="auditAuthor" class="text-slate-800">Member</strong> • <span id="auditTime">Just now</span>
+    </div>
+
+    <!-- Action Buttons -->
+    <div class="flex items-center gap-2 mt-3">
+      <button id="deletePinBtn" type="button" class="hidden min-h-[50px] px-4 rounded-xl bg-red-50 text-red-700 border-2 border-red-200 font-extrabold text-sm items-center justify-center gap-1.5 active:scale-95 transition">
+        <i class="ph-bold ph-trash text-lg"></i>
+        <span>Delete</span>
+      </button>
+      <button id="savePinBtn" type="button" class="flex-1 min-h-[50px] px-5 rounded-xl bg-slate-900 text-white font-extrabold text-sm shadow-lg flex items-center justify-center gap-2 active:scale-95 transition">
+        <i class="ph-bold ph-check text-lg text-emerald-400"></i>
+        <span id="savePinBtnText">Save to Family Map</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Family Member Quick-Join Modal (No password friction) -->
+  <div id="memberModal" class="hidden fixed inset-0 z-40 bg-slate-950/60 backdrop-blur-xs flex items-end sm:items-center justify-center p-3">
+    <div class="bg-white w-full max-w-md rounded-3xl p-5 shadow-2xl border-2 border-slate-900/15">
+      <div class="flex items-center justify-between mb-2">
+        <h3 class="text-lg font-extrabold text-slate-900">Who is searching?</h3>
+        <button id="closeMemberModalBtn" type="button" class="w-10 h-10 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center">
+          <i class="ph-bold ph-x text-lg"></i>
+        </button>
+      </div>
+      <p class="text-xs font-medium text-slate-600 mb-4">Pick a team slot or enter your first name so everyone sees who covered each cul-de-sac.</p>
+
+      <!-- 6 Preset Team Slots -->
+      <div class="grid grid-cols-3 gap-2 mb-4" id="presetMemberGrid">
+        <button type="button" data-slot="Member 1" data-color="#10b981" class="member-slot-btn min-h-[46px] px-2.5 py-2 rounded-xl border-2 border-slate-200 font-bold text-xs flex items-center gap-2">
+          <span class="w-3.5 h-3.5 rounded-full bg-emerald-500 shrink-0"></span>
+          <span class="truncate">Member 1</span>
+        </button>
+        <button type="button" data-slot="Member 2" data-color="#3b82f6" class="member-slot-btn min-h-[46px] px-2.5 py-2 rounded-xl border-2 border-slate-200 font-bold text-xs flex items-center gap-2">
+          <span class="w-3.5 h-3.5 rounded-full bg-blue-500 shrink-0"></span>
+          <span class="truncate">Member 2</span>
+        </button>
+        <button type="button" data-slot="Member 3" data-color="#f59e0b" class="member-slot-btn min-h-[46px] px-2.5 py-2 rounded-xl border-2 border-slate-200 font-bold text-xs flex items-center gap-2">
+          <span class="w-3.5 h-3.5 rounded-full bg-amber-500 shrink-0"></span>
+          <span class="truncate">Member 3</span>
+        </button>
+        <button type="button" data-slot="Member 4" data-color="#a855f7" class="member-slot-btn min-h-[46px] px-2.5 py-2 rounded-xl border-2 border-slate-200 font-bold text-xs flex items-center gap-2">
+          <span class="w-3.5 h-3.5 rounded-full bg-purple-500 shrink-0"></span>
+          <span class="truncate">Member 4</span>
+        </button>
+        <button type="button" data-slot="Member 5" data-color="#ec4899" class="member-slot-btn min-h-[46px] px-2.5 py-2 rounded-xl border-2 border-slate-200 font-bold text-xs flex items-center gap-2">
+          <span class="w-3.5 h-3.5 rounded-full bg-pink-500 shrink-0"></span>
+          <span class="truncate">Member 5</span>
+        </button>
+        <button type="button" data-slot="Member 6" data-color="#06b6d4" class="member-slot-btn min-h-[46px] px-2.5 py-2 rounded-xl border-2 border-slate-200 font-bold text-xs flex items-center gap-2">
+          <span class="w-3.5 h-3.5 rounded-full bg-cyan-500 shrink-0"></span>
+          <span class="truncate">Member 6</span>
+        </button>
+      </div>
+
+      <!-- Custom First Name Input -->
+      <label for="customMemberNameInput" class="block text-xs font-extrabold uppercase tracking-wider text-slate-500 mb-1.5">Or Type Your First Name</label>
+      <div class="flex gap-2">
+        <input id="customMemberNameInput" type="text" maxlength="20" placeholder="e.g., Alex, Mom, Sam..." class="flex-1 min-h-[48px] px-3.5 rounded-xl border-2 border-slate-300 focus:border-slate-900 focus:outline-none text-sm font-bold text-slate-900" />
+        <button id="saveMemberBtn" type="button" class="min-h-[48px] px-5 rounded-xl bg-slate-900 text-white font-extrabold text-sm active:scale-95 transition">
+          Done
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Firebase SDK & Application Logic -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+    import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+    import {
+      getFirestore,
+      collection,
+      doc,
+      addDoc,
+      updateDoc,
+      deleteDoc,
+      onSnapshot
+    } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+    // =========================================================================
+    // 1. CONSTANTS & CONFIGURATION
+    // =========================================================================
+    const SPRUCE_COORDS = [47.8407, -122.2817]; // 17405 Spruce Way, Lynnwood, WA 98037
+    const METERS_PER_MILE = 1609.344;
+
+    const STATUS_CONFIG = {
+      flyered: {
+        label: "Flyered (Door-to-Door)",
+        shortLabel: "Flyered",
+        hex: "#059669", // emerald-600
+        iconClass: "ph-fill ph-check-circle"
+      },
+      poster: {
+        label: "Poster / Sign Placed",
+        shortLabel: "Poster Placed",
+        hex: "#2563eb", // blue-600
+        iconClass: "ph-fill ph-signpost"
+      },
+      camera: {
+        label: "Camera Checked / Asked",
+        shortLabel: "Camera Checked",
+        hex: "#9333ea", // purple-600
+        iconClass: "ph-fill ph-security-camera"
+      },
+      priority: {
+        label: "Needs Canvassing / Priority",
+        shortLabel: "Priority Zone",
+        hex: "#dc2626", // red-600
+        iconClass: "ph-fill ph-warning-circle"
+      },
+      sighting: {
+        label: "Sighting / Lead",
+        shortLabel: "Sighting / Lead",
+        hex: "#f59e0b", // amber-500
+        iconClass: "ph-fill ph-star"
+      }
+    };
+
+    // =========================================================================
+    // 2. APPLICATION STATE
+    // =========================================================================
+    let map;
+    let pinsLayerGroup;
+    let draftMarker = null;
+    let userGpsMarker = null;
+    let userAccuracyCircle = null;
+    let latestUserLatLng = null;
+    let gpsWatchId = null;
+
+    let ringLayers = {
+      r05: null,
+      r10: null,
+      r20: null
+    };
+    let ringVisibility = {
+      r05: true,
+      r10: true,
+      r20: false
+    };
+
+    let allPins = [];
+    let activeFilter = "all";
+    let editingPinId = null;
+    let pendingLatLng = null;
+    let selectedStatus = "flyered";
+
+    // Team Member Profile
+    let currentMember = {
+      name: "",
+      color: "#10b981"
+    };
+
+    // Firebase references
+    let db = null;
+    let auth = null;
+    let currentUser = null;
+    let pinsCollectionRef = null;
+    let offlineFallbackMode = false;
+
+    // =========================================================================
+    // 3. INITIALIZE LEAFLET MAP & SEARCH RINGS
+    // =========================================================================
+    function initMap() {
+      map = L.map("map", {
+        center: SPRUCE_COORDS,
+        zoom: 15,
+        zoomControl: false // Keep top/bottom unobstructed for thumbs
+      });
+
+      // High-legibility OpenStreetMap standard tiles
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        maxZoom: 19,
+        attribution: '&copy; OpenStreetMap'
+      }).addTo(map);
+
+      // Radius Rings around Spruce Elementary
+      ringLayers.r20 = L.circle(SPRUCE_COORDS, {
+        radius: 2.0 * METERS_PER_MILE,
+        color: "#475569",
+        weight: 2,
+        dashArray: "8, 8",
+        fillColor: "#64748b",
+        fillOpacity: 0.03,
+        interactive: false
+      });
+
+      ringLayers.r10 = L.circle(SPRUCE_COORDS, {
+        radius: 1.0 * METERS_PER_MILE,
+        color: "#d97706",
+        weight: 2.5,
+        dashArray: "6, 6",
+        fillColor: "#f59e0b",
+        fillOpacity: 0.04,
+        interactive: false
+      }).addTo(map);
+
+      ringLayers.r05 = L.circle(SPRUCE_COORDS, {
+        radius: 0.5 * METERS_PER_MILE,
+        color: "#dc2626",
+        weight: 3,
+        fillColor: "#ef4444",
+        fillOpacity: 0.06,
+        interactive: false
+      }).addTo(map);
+
+      // School Anchor Marker at 17405 Spruce Way
+      const schoolIcon = L.divIcon({
+        className: "",
+        html: `
+          <div style="width:42px;height:42px;background:#0f172a;color:#fbbf24;border:3px solid #ffffff;border-radius:14px;display:flex;align-items:center;justify-content:center;box-shadow:0 6px 14px rgba(0,0,0,0.4);">
+            <i class="ph-fill ph-graduation-cap" style="font-size:22px;"></i>
+          </div>
+        `,
+        iconSize: [42, 42],
+        iconAnchor: [21, 21]
+      });
+
+      L.marker(SPRUCE_COORDS, { icon: schoolIcon, zIndexOffset: 900 })
+        .addTo(map)
+        .bindPopup(`
+          <div style="font-family:Inter,sans-serif;min-width:180px;">
+            <div style="font-weight:800;font-size:13px;color:#0f172a;">Spruce Elementary School</div>
+            <div style="font-size:11px;color:#475569;margin-top:2px;">17405 Spruce Way, Lynnwood</div>
+            <div style="font-size:11px;font-weight:700;color:#dc2626;margin-top:4px;">Search Center Anchor</div>
+          </div>
+        `);
+
+      // Layer group for collaborative search pins
+      pinsLayerGroup = L.layerGroup().addTo(map);
+
+      // Tap anywhere on map to drop a new pin
+      map.on("click", (e) => {
+        openCreateDrawer(e.latlng.lat, e.latlng.lng);
+      });
+    }
+
+    // =========================================================================
+    // 4. FIREBASE REAL-TIME SYNC SETUP
+    // =========================================================================
+    async function initFirebaseSync() {
+      const syncBadge = document.getElementById("syncBadge");
+      const syncText = document.getElementById("syncText");
+
+      try {
+        if (typeof __firebase_config === "undefined" || !__firebase_config) {
+          throw new Error("Missing Firebase config");
+        }
+
+        const firebaseConfig = JSON.parse(__firebase_config);
+        const appId = typeof __app_id !== "undefined" ? __app_id : "spruce-dog-search";
+
+        const app = initializeApp(firebaseConfig);
+        auth = getAuth(app);
+        db = getFirestore(app);
+
+        // RULE 3: Authenticate FIRST before attaching Firestore listeners
+        if (typeof __initial_auth_token !== "undefined" && __initial_auth_token) {
+          await signInWithCustomToken(auth, __initial_auth_token);
+        } else {
+          await signInAnonymously(auth);
+        }
+        currentUser = auth.currentUser;
+
+        if (!currentUser) {
+          throw new Error("Authentication failed");
+        }
+
+        // RULE 1: Strict public collaborative path for the family team
+        pinsCollectionRef = collection(db, "artifacts", appId, "public", "data", "search_pins");
+
+        // RULE 2: Simple collection listener without orderBy/where; sort in memory
+        onSnapshot(
+          pinsCollectionRef,
+          (snapshot) => {
+            const loaded = [];
+            snapshot.forEach((docSnap) => {
+              loaded.push({ id: docSnap.id, ...docSnap.data() });
+            });
+            // Sort newest first in JS memory
+            loaded.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+            allPins = loaded;
+
+            syncBadge.className = "inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800";
+            syncText.textContent = "Live Sync";
+            renderPinsAndStats();
+          },
+          (error) => {
+            console.error("Firestore listener error:", error);
+            enableOfflineFallback();
+          }
+        );
+      } catch (err) {
+        console.warn("Running in local session mode:", err.message);
+        enableOfflineFallback();
+      }
+    }
+
+    function enableOfflineFallback() {
+      offlineFallbackMode = true;
+      const syncBadge = document.getElementById("syncBadge");
+      const syncText = document.getElementById("syncText");
+      syncBadge.className = "inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-900";
+      syncText.textContent = "Local Mode";
+      renderPinsAndStats();
+    }
+
+    // =========================================================================
+    // 5. RENDER PINS, COUNTERS & FILTERING
+    // =========================================================================
+    function renderPinsAndStats() {
+      // Update live counts
+      const counts = {
+        all: allPins.length,
+        flyered: 0,
+        poster: 0,
+        camera: 0,
+        priority: 0,
+        sighting: 0
+      };
+
+      allPins.forEach((p) => {
+        if (counts[p.status] !== undefined) {
+          counts[p.status]++;
+        }
+      });
+
+      Object.keys(counts).forEach((key) => {
+        const el = document.getElementById(`count-${key}`);
+        if (el) el.textContent = counts[key];
+      });
+
+      // Clear & redraw map markers
+      pinsLayerGroup.clearLayers();
+
+      const visiblePins = activeFilter === "all"
+        ? allPins
+        : allPins.filter((p) => p.status === activeFilter);
+
+      visiblePins.forEach((pin) => {
+        const cfg = STATUS_CONFIG[pin.status] || STATUS_CONFIG.flyered;
+        const iconColor = pin.status === "sighting" ? "#0f172a" : "#ffffff";
+
+        const markerIcon = L.divIcon({
+          className: "",
+          html: `
+            <div class="custom-pin" style="width:36px;height:36px;background:${cfg.hex};color:${iconColor};">
+              <i class="${cfg.iconClass}" style="font-size:18px;"></i>
+            </div>
+          `,
+          iconSize: [36, 36],
+          iconAnchor: [18, 18]
+        });
+
+        const marker = L.marker([pin.lat, pin.lng], { icon: markerIcon });
+        marker.on("click", (e) => {
+          L.DomEvent.stopPropagation(e);
+          openEditDrawer(pin);
+        });
+
+        marker.addTo(pinsLayerGroup);
+      });
+    }
+
+    // =========================================================================
+    // 6. BOTTOM SHEET DRAWER LOGIC (ADD / EDIT / DELETE)
+    // =========================================================================
+    const pinDrawer = document.getElementById("pinDrawer");
+    const drawerTitle = document.getElementById("drawerTitle");
+    const drawerCoords = document.getElementById("drawerCoords");
+    const pinNoteInput = document.getElementById("pinNoteInput");
+    const pinAuditInfo = document.getElementById("pinAuditInfo");
+    const deletePinBtn = document.getElementById("deletePinBtn");
+    const savePinBtnText = document.getElementById("savePinBtnText");
+
+    function clearDraftMarker() {
+      if (draftMarker) {
+        map.removeLayer(draftMarker);
+        draftMarker = null;
+      }
+    }
+
+    function showDraftMarker(lat, lng) {
+      clearDraftMarker();
+      const draftIcon = L.divIcon({
+        className: "",
+        html: `
+          <div style="width:38px;height:38px;background:#0f172a;color:#34d399;border:3px dashed #ffffff;border-radius:9999px;display:flex;align-items:center;justify-content:center;box-shadow:0 6px 14px rgba(0,0,0,0.45);">
+            <i class="ph-bold ph-plus" style="font-size:18px;"></i>
+          </div>
+        `,
+        iconSize: [38, 38],
+        iconAnchor: [19, 19]
+      });
+      draftMarker = L.marker([lat, lng], { icon: draftIcon, zIndexOffset: 1000 }).addTo(map);
+    }
+
+    function updateStatusButtonsUI() {
+      document.querySelectorAll(".status-option").forEach((btn) => {
+        const st = btn.dataset.status;
+        if (st === selectedStatus) {
+          btn.classList.add("border-slate-900", "bg-slate-100", "shadow-xs");
+          btn.classList.remove("border-slate-200");
+        } else {
+          btn.classList.remove("border-slate-900", "bg-slate-100", "shadow-xs");
+          btn.classList.add("border-slate-200");
+        }
+      });
+    }
+
+    function openCreateDrawer(lat, lng) {
+      editingPinId = null;
+      pendingLatLng = { lat, lng };
+      selectedStatus = "flyered";
+
+      drawerTitle.textContent = "Log New Search Spot";
+      drawerCoords.textContent = `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+      pinNoteInput.value = "";
+      pinAuditInfo.classList.add("hidden");
+      deletePinBtn.classList.add("hidden");
+      deletePinBtn.classList.remove("flex");
+      savePinBtnText.textContent = "Save to Family Map";
+
+      updateStatusButtonsUI();
+      showDraftMarker(lat, lng);
+
+      pinDrawer.classList.remove("closed");
+      pinDrawer.classList.add("open");
+    }
+
+    function openEditDrawer(pin) {
+      clearDraftMarker();
+      editingPinId = pin.id;
+      pendingLatLng = { lat: pin.lat, lng: pin.lng };
+      selectedStatus = pin.status || "flyered";
+
+      drawerTitle.textContent = "Update Search Spot";
+      drawerCoords.textContent = `${pin.lat.toFixed(5)}, ${pin.lng.toFixed(5)}`;
+      pinNoteInput.value = pin.note || "";
+
+      // Show who logged it and when
+      document.getElementById("auditAuthor").textContent = pin.updatedBy || "Family Member";
+      document.getElementById("auditTime").textContent = formatTimeAgo(pin.updatedAt);
+      pinAuditInfo.classList.remove("hidden");
+
+      deletePinBtn.classList.remove("hidden");
+      deletePinBtn.classList.add("flex");
+      savePinBtnText.textContent = "Update Status";
+
+      updateStatusButtonsUI();
+      pinDrawer.classList.remove("closed");
+      pinDrawer.classList.add("open");
+    }
+
+    function closeDrawer() {
+      clearDraftMarker();
+      editingPinId = null;
+      pendingLatLng = null;
+      pinDrawer.classList.remove("open");
+      pinDrawer.classList.add("closed");
+    }
+
+    async function handleSavePin() {
+      if (!pendingLatLng) return;
+
+      const payload = {
+        lat: Number(pendingLatLng.lat.toFixed(6)),
+        lng: Number(pendingLatLng.lng.toFixed(6)),
+        status: selectedStatus,
+        note: pinNoteInput.value.trim(),
+        updatedBy: currentMember.name || "Family Team",
+        memberColor: currentMember.color || "#10b981",
+        updatedAt: Date.now()
+      };
+
+      const targetEditId = editingPinId;
+      closeDrawer();
+
+      if (!offlineFallbackMode && currentUser && pinsCollectionRef) {
+        try {
+          if (targetEditId) {
+            const docRef = doc(pinsCollectionRef, targetEditId);
+            await updateDoc(docRef, payload);
+            showToast("Updated for all family members");
+          } else {
+            await addDoc(pinsCollectionRef, payload);
+            showToast("Pin shared with team!");
+          }
+        } catch (err) {
+          console.error("Save error:", err);
+          showToast("Sync error — check connection");
+        }
+      } else {
+        // Local session fallback
+        if (targetEditId) {
+          const idx = allPins.findIndex((p) => p.id === targetEditId);
+          if (idx !== -1) allPins[idx] = { ...allPins[idx], ...payload };
+        } else {
+          allPins.unshift({ id: "local_" + Date.now(), ...payload });
+        }
+        renderPinsAndStats();
+        showToast("Saved to map");
+      }
+    }
+
+    async function handleDeletePin() {
+      if (!editingPinId) return;
+      const targetId = editingPinId;
+      closeDrawer();
+
+      if (!offlineFallbackMode && currentUser && pinsCollectionRef) {
+        try {
+          await deleteDoc(doc(pinsCollectionRef, targetId));
+          showToast("Pin removed");
+        } catch (err) {
+          console.error("Delete error:", err);
+          showToast("Could not delete pin");
+        }
+      } else {
+        allPins = allPins.filter((p) => p.id !== targetId);
+        renderPinsAndStats();
+        showToast("Pin removed");
+      }
+    }
+
+    // =========================================================================
+    // 7. LIVE GPS TRACKING & "DROP AT MY SPOT"
+    // =========================================================================
+    function updateGpsMarker(lat, lng, accuracy) {
+      latestUserLatLng = { lat, lng };
+
+      if (!userGpsMarker) {
+        const gpsDotIcon = L.divIcon({
+          className: "",
+          html: `<div class="gps-marker-dot"></div>`,
+          iconSize: [18, 18],
+          iconAnchor: [9, 9]
+        });
+        userGpsMarker = L.marker([lat, lng], { icon: gpsDotIcon, zIndexOffset: 1100 }).addTo(map);
+      } else {
+        userGpsMarker.setLatLng([lat, lng]);
+      }
+
+      if (!userAccuracyCircle) {
+        userAccuracyCircle = L.circle([lat, lng], {
+          radius: Math.min(accuracy || 25, 100),
+          color: "#2563eb",
+          weight: 1,
+          fillColor: "#3b82f6",
+          fillOpacity: 0.12,
+          interactive: false
+        }).addTo(map);
+      } else {
+        userAccuracyCircle.setLatLng([lat, lng]);
+        if (accuracy) userAccuracyCircle.setRadius(Math.min(accuracy, 100));
+      }
+    }
+
+    function startContinuousGps(centerOnFix = false) {
+      if (!("geolocation" in navigator)) {
+        showToast("GPS not supported on this browser");
+        return;
+      }
+
+      const gpsIcon = document.getElementById("gpsIcon");
+      gpsIcon.classList.add("animate-spin");
+
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          gpsIcon.classList.remove("animate-spin");
+          const { latitude, longitude, accuracy } = pos.coords;
+          updateGpsMarker(latitude, longitude, accuracy);
+          if (centerOnFix) {
+            map.flyTo([latitude, longitude], 17, { duration: 0.7 });
+          }
+        },
+        (err) => {
+          gpsIcon.classList.remove("animate-spin");
+          if (centerOnFix) {
+            showToast("Enable Location Services to use GPS");
+          }
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 5000 }
+      );
+
+      if (gpsWatchId === null) {
+        gpsWatchId = navigator.geolocation.watchPosition(
+          (pos) => {
+            updateGpsMarker(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy);
+          },
+          () => {},
+          { enableHighAccuracy: true, maximumAge: 4000 }
+        );
+      }
+    }
+
+    function dropPinAtUserGps() {
+      if (latestUserLatLng) {
+        map.flyTo([latestUserLatLng.lat, latestUserLatLng.lng], 17, { duration: 0.5 });
+        openCreateDrawer(latestUserLatLng.lat, latestUserLatLng.lng);
+        return;
+      }
+
+      if (!("geolocation" in navigator)) {
+        const c = map.getCenter();
+        openCreateDrawer(c.lat, c.lng);
+        return;
+      }
+
+      showToast("Getting GPS lock...");
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const { latitude, longitude, accuracy } = pos.coords;
+          updateGpsMarker(latitude, longitude, accuracy);
+          map.flyTo([latitude, longitude], 17, { duration: 0.5 });
+          openCreateDrawer(latitude, longitude);
+        },
+        () => {
+          showToast("GPS unavailable — dropping at map center");
+          const c = map.getCenter();
+          openCreateDrawer(c.lat, c.lng);
+        },
+        { enableHighAccuracy: true, timeout: 8000 }
+      );
+    }
+
+    // =========================================================================
+    // 8. FAMILY MEMBER PROFILE (LOCALSTORAGE PERSISTENCE)
+    // =========================================================================
+    function loadMemberProfile() {
+      try {
+        const saved = localStorage.getItem("spruce_search_member");
+        if (saved) {
+          currentMember = JSON.parse(saved);
+        }
+      } catch (e) {
+        // Ignore storage restrictions
+      }
+
+      if (!currentMember.name) {
+        currentMember = { name: "Member 1", color: "#10b981" };
+      }
+      syncMemberBadgeUI();
+    }
+
+    function saveMemberProfile(name, color) {
+      currentMember = {
+        name: name.trim() || "Member 1",
+        color: color || currentMember.color || "#10b981"
+      };
+      try {
+        localStorage.setItem("spruce_search_member", JSON.stringify(currentMember));
+      } catch (e) {}
+      syncMemberBadgeUI();
+    }
+
+    function syncMemberBadgeUI() {
+      document.getElementById("activeMemberName").textContent = currentMember.name;
+      document.getElementById("activeMemberDot").style.backgroundColor = currentMember.color;
+    }
+
+    // =========================================================================
+    // 9. HELPERS & UI EVENT WIRING
+    // =========================================================================
+    let toastTimer = null;
+    function showToast(msg) {
+      const banner = document.getElementById("toastBanner");
+      document.getElementById("toastContent").textContent = msg;
+      banner.classList.remove("opacity-0");
+      banner.classList.add("opacity-100");
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => {
+        banner.classList.remove("opacity-100");
+        banner.classList.add("opacity-0");
+      }, 2200);
+    }
+
+    function formatTimeAgo(ts) {
+      if (!ts) return "Just now";
+      const diffSec = Math.max(1, Math.floor((Date.now() - ts) / 1000));
+      if (diffSec < 60) return "Just now";
+      const diffMin = Math.floor(diffSec / 60);
+      if (diffMin < 60) return `${diffMin}m ago`;
+      const diffHr = Math.floor(diffMin / 60);
+      if (diffHr < 24) return `${diffHr}h ago`;
+      return `${Math.floor(diffHr / 24)}d ago`;
+    }
+
+    function bindEvents() {
+      // Status selector inside bottom drawer
+      document.querySelectorAll(".status-option").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          selectedStatus = btn.dataset.status;
+          updateStatusButtonsUI();
+        });
+      });
+
+      // Quick note chips
+      document.querySelectorAll(".quick-note-chip").forEach((chip) => {
+        chip.addEventListener("click", () => {
+          const text = chip.textContent.trim();
+          const current = pinNoteInput.value.trim();
+          pinNoteInput.value = current ? `${current} • ${text}` : text;
+        });
+      });
+
+      // Drawer actions
+      document.getElementById("closeDrawerBtn").addEventListener("click", closeDrawer);
+      document.getElementById("savePinBtn").addEventListener("click", handleSavePin);
+      document.getElementById("deletePinBtn").addEventListener("click", handleDeletePin);
+
+      // Filter chips
+      document.querySelectorAll(".filter-chip").forEach((chip) => {
+        chip.addEventListener("click", () => {
+          activeFilter = chip.dataset.filter;
+          document.querySelectorAll(".filter-chip").forEach((c) => {
+            if (c.dataset.filter === activeFilter) {
+              c.classList.add("bg-slate-900", "text-white");
+              c.classList.remove("bg-white/95", "text-slate-900");
+            } else {
+              c.classList.remove("bg-slate-900", "text-white");
+              c.classList.add("bg-white/95", "text-slate-900");
+            }
+          });
+          renderPinsAndStats();
+        });
+      });
+
+      // Radius Ring Toggles
+      const ringConfigs = [
+        { id: "toggleRing05", key: "r05", activeBg: "bg-red-600", activeText: "text-white" },
+        { id: "toggleRing10", key: "r10", activeBg: "bg-amber-500", activeText: "text-slate-950" },
+        { id: "toggleRing20", key: "r20", activeBg: "bg-slate-800", activeText: "text-white" }
+      ];
+
+      ringConfigs.forEach(({ id, key, activeBg, activeText }) => {
+        document.getElementById(id).addEventListener("click", (e) => {
+          const btn = e.currentTarget;
+          ringVisibility[key] = !ringVisibility[key];
+          if (ringVisibility[key]) {
+            ringLayers[key].addTo(map);
+            btn.classList.remove("bg-slate-200", "text-slate-700");
+            btn.classList.add(activeBg, activeText);
+          } else {
+            map.removeLayer(ringLayers[key]);
+            btn.classList.remove(activeBg, activeText);
+            btn.classList.add("bg-slate-200", "text-slate-700");
+          }
+        });
+      });
+
+      // Recenter on Spruce Elementary
+      document.getElementById("recenterSchoolBtn").addEventListener("click", () => {
+        map.flyTo(SPRUCE_COORDS, 15, { duration: 0.6 });
+        showToast("Centered on Spruce Elementary");
+      });
+
+      // GPS Buttons
+      document.getElementById("gpsLocateBtn").addEventListener("click", () => startContinuousGps(true));
+      document.getElementById("dropAtGpsBtn").addEventListener("click", dropPinAtUserGps);
+
+      // Member Modal Controls
+      const memberModal = document.getElementById("memberModal");
+      const customInput = document.getElementById("customMemberNameInput");
+
+      document.getElementById("memberProfileBtn").addEventListener("click", () => {
+        customInput.value = currentMember.name;
+        memberModal.classList.remove("hidden");
+      });
+
+      document.getElementById("closeMemberModalBtn").addEventListener("click", () => {
+        memberModal.classList.add("hidden");
+      });
+
+      document.querySelectorAll(".member-slot-btn").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          saveMemberProfile(btn.dataset.slot, btn.dataset.color);
+          memberModal.classList.add("hidden");
+          showToast(`Searching as ${btn.dataset.slot}`);
+        });
+      });
+
+      document.getElementById("saveMemberBtn").addEventListener("click", () => {
+        const val = customInput.value.trim();
+        if (val) {
+          saveMemberProfile(val, currentMember.color);
+        }
+        memberModal.classList.add("hidden");
+        showToast(`Searching as ${currentMember.name}`);
+      });
+    }
+
+    // Boot Application
+    window.addEventListener("DOMContentLoaded", () => {
+      loadMemberProfile();
+      initMap();
+      bindEvents();
+      initFirebaseSync();
+      startContinuousGps(false);
+    });
+  </script>
+</body>
+</html>
