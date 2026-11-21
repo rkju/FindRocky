@@ -1,4 +1,4 @@
-export const teamEmail = "findrocky-team@example.com";
+export const teamEmail = "findrocky@kodawari.com";
 
 export default {
   apiKey: "AIzaSyA9KJ8hyng7RbSmROvcqu1Zb_7SmT65Kz8",

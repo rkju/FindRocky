@@ -10,11 +10,10 @@ configuration and the shared account email are in `firebase-config.js`.
 
 1. In Firebase Console > Authentication > Sign-in method, enable
    **Email/Password**.
-2. In Authentication > Users, add `findrocky-team@example.com` and choose a
-   team PIN as its password. Use at least six characters; a random PIN of at
-   least 10 digits is recommended. This reserved email is only an account
-   identifier and cannot receive password-reset emails. Share the PIN privately
-   with the team; do not put it in the repository.
+2. In Authentication > Users, use `findrocky@kodawari.com` with the team PIN as
+   its password. Use at least six characters; a random PIN of at least 10 digits
+   is recommended. Share the PIN privately with the team; do not put it in the
+   repository.
 3. In Firestore > Rules, paste the contents of `firestore.rules` and publish
    them. Or, with the Firebase CLI installed and signed in, run
    `firebase deploy --only firestore:rules --project findrocky-d1617`.
