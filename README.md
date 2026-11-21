@@ -15,28 +15,18 @@ configuration and the shared account email are in `firebase-config.js`.
    least 10 digits is recommended. This reserved email is only an account
    identifier and cannot receive password-reset emails. Share the PIN privately
    with the team; do not put it in the repository.
-3. In Firestore > Rules, paste the rules below and publish them. They allow
-   only the team account's UID (from Authentication > Users).
+3. In Firestore > Rules, paste the contents of `firestore.rules` and publish
+   them. Or, with the Firebase CLI installed and signed in, run
+   `firebase deploy --only firestore:rules --project findrocky-d1617`.
 4. Merge the site changes into `main` for GitHub Pages to publish them.
 
-The rules restrict access to the shared account, including when anonymous
-sign-in or other accounts are enabled:
-
-```
-rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-    match /artifacts/spruce-dog-search/public/data/search_pins/{pin} {
-      allow read, write: if request.auth != null
-        && request.auth.uid == "Hw9ILGaajIMxxAajeuN3oa2mINi2";
-    }
-  }
-}
-```
+These rules make only the search-pins collection publicly readable and
+writable. Anyone can bypass the site's sign-in screen and access that data
+directly through Firebase, so do not put sensitive information in pins or
+notes. The PIN is a convenience gate for the site UI, not database security.
 
 PIN sign-in requires an internet connection and is required again after a
-reload. GitHub Pages and the site's source code remain public; the PIN and
-Firestore rules protect the shared pins and notes, not the page itself.
+reload. GitHub Pages and the site's source code remain public.
 
 **Live Sync** means the shared map is connected. **Offline** or **Sync Error**
 disables saving until the connection or rules are fixed. If shared sync cannot

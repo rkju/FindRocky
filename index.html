@@ -212,7 +212,7 @@
     </div>
 
     <!-- Recenter on Spruce Elementary -->
-    <button id="recenterSchoolBtn" type="button" title="Center on Spruce Elementary" class="w-12 h-12 rounded-2xl bg-white/95 backdrop-blur-md border-2 border-slate-900/15 shadow-lg flex items-center justify-center text-slate-900 active:scale-95 transition">
+    <button id="recenterSchoolBtn" type="button" title="Center on search area" class="w-12 h-12 rounded-2xl bg-white/95 backdrop-blur-md border-2 border-slate-900/15 shadow-lg flex items-center justify-center text-slate-900 active:scale-95 transition">
       <i class="ph-fill ph-graduation-cap text-xl text-amber-600"></i>
     </button>
   </aside>
@@ -407,7 +407,8 @@
     // =========================================================================
     // 1. CONSTANTS & CONFIGURATION
     // =========================================================================
-    const SPRUCE_COORDS = [47.8407, -122.2817]; // 17405 Spruce Way, Lynnwood, WA 98037
+    const SPRUCE_COORDS = [47.8407, -122.2817]; // Spruce Elementary School
+    const MAP_HOME_COORDS = [47.8411246, -122.2888459]; // 17326 Spruce Way, Lynnwood, WA 98037
     const METERS_PER_MILE = 1609.344;
 
     const STATUS_CONFIG = {
@@ -496,7 +497,7 @@
     // =========================================================================
     function initMap() {
       map = L.map("map", {
-        center: SPRUCE_COORDS,
+        center: MAP_HOME_COORDS,
         zoom: 15,
         zoomControl: false // Keep top/bottom unobstructed for thumbs
       });
@@ -1197,10 +1198,10 @@
         }
       });
 
-      // Recenter on Spruce Elementary
+      // Recenter on the requested search area
       document.getElementById("recenterSchoolBtn").addEventListener("click", () => {
-        map.flyTo(SPRUCE_COORDS, 15, { duration: 0.6 });
-        showToast("Centered on Spruce Elementary");
+        map.flyTo(MAP_HOME_COORDS, 15, { duration: 0.6 });
+        showToast("Centered on search area");
       });
 
       // GPS Buttons

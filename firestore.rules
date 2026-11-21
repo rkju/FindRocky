@@ -1,0 +1,8 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /artifacts/spruce-dog-search/public/data/search_pins/{pin} {
+      allow read, write: if true;
+    }
+  }
+}
