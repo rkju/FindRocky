@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>Spruce Elementary Search Tracker</title>
+  <title>Spruce Search Grid</title>
 
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -125,7 +125,7 @@
   <header class="fixed top-0 left-0 right-0 z-20 pointer-events-none px-2.5 pt-2.5 sm:px-4 sm:pt-3 flex flex-col gap-2">
     <!-- Top Compact Status & Team Bar -->
     <div class="pointer-events-auto bg-white/95 backdrop-blur-md border-2 border-slate-900/15 shadow-lg rounded-2xl px-3 py-2 flex items-center justify-between gap-2">
-      <div class="flex items-center gap-2 min-w-0">
+      <div class="flex flex-1 items-center gap-2 min-w-[144px]">
         <div class="w-9 h-9 rounded-xl bg-amber-500 text-slate-950 flex items-center justify-center shrink-0 shadow-sm">
           <i class="ph-fill ph-paw-print text-xl"></i>
         </div>
@@ -137,14 +137,14 @@
               <span id="syncText">Connecting</span>
             </span>
           </div>
-          <p class="text-[11px] font-medium text-slate-600 truncate">17405 Spruce Way • Tap map to log</p>
+          <p class="text-[11px] font-medium text-slate-600 truncate">17326 Spruce Way</p>
         </div>
       </div>
 
       <!-- Current Family Member Badge Button -->
-      <button id="memberProfileBtn" type="button" class="min-h-[44px] px-3 py-1.5 rounded-xl bg-slate-900 text-white font-bold text-xs flex items-center gap-2 shadow-sm active:scale-95 transition shrink-0">
+      <button id="memberProfileBtn" type="button" class="min-w-0 min-h-[44px] px-3 py-1.5 rounded-xl bg-slate-900 text-white font-bold text-xs flex items-center gap-2 shadow-sm active:scale-95 transition">
         <span id="activeMemberDot" class="w-3 h-3 rounded-full bg-emerald-400 border border-white"></span>
-        <span id="activeMemberName">Set Name</span>
+        <span id="activeMemberName" class="truncate">Set Name</span>
         <i class="ph-bold ph-caret-down text-xs opacity-75"></i>
       </button>
     </div>
@@ -188,7 +188,7 @@
     </div>
   </header>
 
-  <!-- Right-Side Radius Ring Toggles & School Recenter Control -->
+  <!-- Right-Side Radius Ring Toggles & Search Center Control -->
   <aside class="fixed right-2.5 sm:right-4 top-32 z-20 flex flex-col gap-2">
     <div class="bg-white/95 backdrop-blur-md border-2 border-slate-900/15 shadow-lg rounded-2xl p-1.5 flex flex-col gap-1">
       <div class="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 text-center pt-0.5">Rings</div>
@@ -211,9 +211,9 @@
       </button>
     </div>
 
-    <!-- Recenter on Spruce Elementary -->
-    <button id="recenterSchoolBtn" type="button" title="Center on search area" class="w-12 h-12 rounded-2xl bg-white/95 backdrop-blur-md border-2 border-slate-900/15 shadow-lg flex items-center justify-center text-slate-900 active:scale-95 transition">
-      <i class="ph-fill ph-graduation-cap text-xl text-amber-600"></i>
+    <!-- Recenter on the search address -->
+    <button id="recenterSearchBtn" type="button" title="Center on 17326 Spruce Way" aria-label="Center on 17326 Spruce Way" class="w-12 h-12 rounded-2xl bg-white/95 backdrop-blur-md border-2 border-slate-900/15 shadow-lg flex items-center justify-center text-slate-900 active:scale-95 transition">
+      <i class="ph-fill ph-house text-xl text-amber-600"></i>
     </button>
   </aside>
 
@@ -407,7 +407,7 @@
     // =========================================================================
     // 1. CONSTANTS & CONFIGURATION
     // =========================================================================
-    const SPRUCE_COORDS = [47.8407, -122.2817]; // Spruce Elementary School
+    const SPRUCE_COORDS = [47.840503, -122.285666]; // Spruce Elementary School
     const MAP_HOME_COORDS = [47.8411246, -122.2888459]; // 17326 Spruce Way, Lynnwood, WA 98037
     const METERS_PER_MILE = 1609.344;
 
@@ -508,8 +508,8 @@
         attribution: '&copy; OpenStreetMap'
       }).addTo(map);
 
-      // Radius Rings around Spruce Elementary
-      ringLayers.r20 = L.circle(SPRUCE_COORDS, {
+      // Radius rings around the search address
+      ringLayers.r20 = L.circle(MAP_HOME_COORDS, {
         radius: 2.0 * METERS_PER_MILE,
         color: "#475569",
         weight: 2,
@@ -519,7 +519,7 @@
         interactive: false
       });
 
-      ringLayers.r10 = L.circle(SPRUCE_COORDS, {
+      ringLayers.r10 = L.circle(MAP_HOME_COORDS, {
         radius: 1.0 * METERS_PER_MILE,
         color: "#d97706",
         weight: 2.5,
@@ -529,7 +529,7 @@
         interactive: false
       }).addTo(map);
 
-      ringLayers.r05 = L.circle(SPRUCE_COORDS, {
+      ringLayers.r05 = L.circle(MAP_HOME_COORDS, {
         radius: 0.5 * METERS_PER_MILE,
         color: "#dc2626",
         weight: 3,
@@ -538,7 +538,23 @@
         interactive: false
       }).addTo(map);
 
-      // School Anchor Marker at 17405 Spruce Way
+      const homeIcon = L.divIcon({
+        className: "",
+        html: `
+          <div style="width:34px;height:34px;background:#0f172a;color:#fbbf24;border:3px solid #ffffff;border-radius:12px;display:flex;align-items:center;justify-content:center;box-shadow:0 6px 14px rgba(0,0,0,0.4);">
+            <i class="ph-fill ph-house" style="font-size:20px;"></i>
+          </div>
+          <div style="width:2px;height:8px;background:#0f172a;margin:auto;"></div>
+        `,
+        iconSize: [34, 42],
+        iconAnchor: [17, 42]
+      });
+
+      L.marker(MAP_HOME_COORDS, { icon: homeIcon, title: "17326 Spruce Way", alt: "17326 Spruce Way", zIndexOffset: -100 })
+        .addTo(map)
+        .bindPopup("17326 Spruce Way");
+
+      // School marker at 17405 Spruce Way
       const schoolIcon = L.divIcon({
         className: "",
         html: `
@@ -556,7 +572,6 @@
           <div style="font-family:Inter,sans-serif;min-width:180px;">
             <div style="font-weight:800;font-size:13px;color:#0f172a;">Spruce Elementary School</div>
             <div style="font-size:11px;color:#475569;margin-top:2px;">17405 Spruce Way, Lynnwood</div>
-            <div style="font-size:11px;font-weight:700;color:#dc2626;margin-top:4px;">Search Center Anchor</div>
           </div>
         `);
 
@@ -1199,9 +1214,9 @@
       });
 
       // Recenter on the requested search area
-      document.getElementById("recenterSchoolBtn").addEventListener("click", () => {
+      document.getElementById("recenterSearchBtn").addEventListener("click", () => {
         map.flyTo(MAP_HOME_COORDS, 15, { duration: 0.6 });
-        showToast("Centered on search area");
+        showToast("Centered on 17326 Spruce Way");
       });
 
       // GPS Buttons
